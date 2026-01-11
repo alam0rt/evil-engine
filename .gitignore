@@ -1,0 +1,15 @@
+# Build artifacts
+build/
+*.so
+*.dylib
+*.dll
+
+# Godot
+.godot/
+*.import
+
+# Editor
+*.swp
+*~
+.vscode/
+.idea/

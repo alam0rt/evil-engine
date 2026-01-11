@@ -1,0 +1,1 @@
+option('godot_headers', type: 'string', value: '', description: 'Path to godot-headers')

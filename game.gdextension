@@ -1,0 +1,10 @@
+[configuration]
+
+entry_symbol = "evil_engine_init"
+compatibility_minimum = "4.2"
+
+[libraries]
+
+linux.x86_64 = "res://build/libevil_engine.so"
+macos.universal = "res://build/libevil_engine.dylib"
+windows.x86_64 = "res://build/evil_engine.dll"
