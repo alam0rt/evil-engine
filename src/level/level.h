@@ -4,8 +4,15 @@
  * Manages loading of level data from BLB segments and provides
  * access to tiles, layers, palettes, and entities.
  * 
- * Based on LevelDataContext structure from the original game
- * (located at GameState + 0x84, or 0x8009DCC4 in PAL).
+ * STRUCTURE DEFINITIONS are based on the original game and verified
+ * against Ghidra decompilation (PAL version SLES-01090).
+ * 
+ * ACCESSOR FUNCTIONS are convenience wrappers for the Evil Engine project.
+ * For 1:1 original game functions, see level_accessors.h.
+ * 
+ * EXPORT/PACKING FUNCTIONS are in level_export.h (tool-only, not in game).
+ * 
+ * Original LevelDataContext is at GameState + 0x84 (0x8009DCC4 in PAL).
  */
 
 #ifndef LEVEL_H
@@ -17,6 +24,12 @@
 
 /* -----------------------------------------------------------------------------
  * Tile Header (Asset 100) - 36 bytes
+ * 
+ * VERIFIED via Ghidra on 2026-01-11:
+ *   - GetTotalTileCount @ 0x8007b53c reads offsets 0x10, 0x12, 0x14
+ *   - GetEntityCount @ 0x8007b7a8 reads offset 0x1E
+ *   - LoadBGColorFromTileHeader @ 0x80024678 reads offsets 0x00-0x02
+ *   - GetLevelDimensions @ 0x8007b434 reads offsets 0x08, 0x0A
  * -------------------------------------------------------------------------- */
 
 typedef struct {
@@ -271,106 +284,22 @@ void Level_GetBackgroundColor(const LevelContext* ctx, u8* r, u8* g, u8* b);
 void Level_GetSpawnPosition(const LevelContext* ctx, s32* x, s32* y);
 
 /* -----------------------------------------------------------------------------
- * Level Data Packing (for BLB Export)
+ * Export/Packing Functions (TOOL-ONLY)
+ * 
+ * For level editing/export functionality, include level_export.h
+ * These are NOT part of the original game - they are for the Godot addon.
  * -------------------------------------------------------------------------- */
 
-/**
- * Pack tilemap data into BLB Asset 200 format.
- * Returns allocated buffer (caller must free).
- * 
- * @param tilemap_data  Array of u16 tilemap values
- * @param width         Layer width in tiles
- * @param height        Layer height in tiles
- * @param out_size      Output: packed data size
- * @return              Allocated buffer, or NULL on error
+/* See level_export.h for:
+ *   Level_PackTilemap()
+ *   Level_PackLayers()
+ *   Level_PackEntities()
+ *   Level_PackTilePixels()
+ *   Level_PackPalettes()
+ *   Level_PackTileHeader()
+ *   Level_BuildPrimarySegment()
+ *   Level_BuildSecondarySegment()
+ *   Level_BuildTertiarySegment()
  */
-u8* Level_PackTilemap(const u16* tilemap_data, u32 width, u32 height, u32* out_size);
-
-/**
- * Pack layer entries into BLB Asset 201 format.
- * Returns allocated buffer (caller must free).
- * 
- * @param layers        Array of LayerEntry structures
- * @param count         Number of layers
- * @param out_size      Output: packed data size
- * @return              Allocated buffer, or NULL on error
- */
-u8* Level_PackLayers(const LayerEntry* layers, u32 count, u32* out_size);
-
-/**
- * Pack entity definitions into BLB Asset 501 format.
- * Returns allocated buffer (caller must free).
- * 
- * @param entities      Array of EntityDef structures
- * @param count         Number of entities
- * @param out_size      Output: packed data size
- * @return              Allocated buffer, or NULL on error
- */
-u8* Level_PackEntities(const EntityDef* entities, u32 count, u32* out_size);
-
-/**
- * Pack tile pixel data into BLB Asset 300 format (8bpp indexed).
- * Returns allocated buffer (caller must free).
- * 
- * @param pixels        Array of tile pixel data (indexed 8bpp)
- * @param tile_count    Number of tiles
- * @param out_size      Output: packed data size
- * @return              Allocated buffer, or NULL on error
- */
-u8* Level_PackTilePixels(const u8* pixels, u32 tile_count, u32* out_size);
-
-/**
- * Pack palette data into BLB Asset 400 container format.
- * Returns allocated buffer (caller must free).
- * 
- * @param palettes      Array of PSX 15-bit RGB palettes (u16 values)
- * @param palette_count Number of 256-color palettes
- * @param out_size      Output: packed data size
- * @return              Allocated buffer, or NULL on error
- */
-u8* Level_PackPalettes(const u16* palettes, u32 palette_count, u32* out_size);
-
-/**
- * Pack tile header into BLB Asset 100 format.
- * Returns allocated buffer (caller must free).
- * 
- * @param header        Tile header structure
- * @param out_size      Output: packed data size
- * @return              Allocated buffer, or NULL on error
- */
-u8* Level_PackTileHeader(const TileHeader* header, u32* out_size);
-
-/**
- * Build a complete primary segment from level context.
- * This includes all primary assets (tiles, layers, entities, palettes).
- * Returns allocated buffer (caller must free).
- * 
- * @param ctx           Level context with all data loaded
- * @param out_size      Output: segment size
- * @return              Allocated segment buffer, or NULL on error
- */
-u8* Level_BuildPrimarySegment(const LevelContext* ctx, u32* out_size);
-
-/**
- * Build a secondary segment for a stage.
- * Returns allocated buffer (caller must free).
- * 
- * @param ctx           Level context
- * @param stage         Stage index
- * @param out_size      Output: segment size
- * @return              Allocated segment buffer, or NULL on error
- */
-u8* Level_BuildSecondarySegment(const LevelContext* ctx, u8 stage, u32* out_size);
-
-/**
- * Build a tertiary segment for a stage.
- * Returns allocated buffer (caller must free).
- * 
- * @param ctx           Level context
- * @param stage         Stage index
- * @param out_size      Output: segment size
- * @return              Allocated segment buffer, or NULL on error
- */
-u8* Level_BuildTertiarySegment(const LevelContext* ctx, u8 stage, u32* out_size);
 
 #endif /* LEVEL_H */

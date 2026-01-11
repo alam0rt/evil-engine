@@ -8,6 +8,9 @@ build/
 .godot/
 *.import
 
+# Game assets (copyrighted, do not commit)
+assets/
+
 # Editor
 *.swp
 *~

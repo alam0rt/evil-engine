@@ -5,7 +5,9 @@ extends EditorPlugin
 ## Registers the BLB import plugin to automatically convert .BLB files
 ## into native Godot scenes when added to the project.
 
-var import_plugin: BLBImportPlugin
+const BLBImportPlugin = preload("res://addons/blb_importer/blb_import_plugin.gd")
+
+var import_plugin: EditorImportPlugin
 
 func _enter_tree() -> void:
 	import_plugin = BLBImportPlugin.new()

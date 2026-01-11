@@ -3,9 +3,18 @@
  * 
  * Loads level data from BLB segments and provides access to tiles,
  * layers, palettes, and entities.
+ * 
+ * This file contains:
+ *   - Level loading functions (based on original game patterns)
+ *   - Level accessor functions (convenience wrappers)
+ *   - Level export functions (TOOL-ONLY, not from game)
+ * 
+ * For 1:1 original game accessors, see level_accessors.h
  */
 
 #include "level.h"
+#include "level_export.h"  /* Tool-only export functions */
+#include <stdlib.h>
 #include <string.h>
 
 /* -----------------------------------------------------------------------------
@@ -280,6 +289,13 @@ void Level_GetSpawnPosition(const LevelContext* ctx, s32* x, s32* y) {
     if (x) *x = ctx->tile_header->spawn_x * 16 + 8;
     if (y) *y = ctx->tile_header->spawn_y * 16 + 15;
 }
+
+/* =============================================================================
+ * TOOL-ONLY CODE BELOW - NOT PART OF ORIGINAL GAME
+ * 
+ * The following functions are for the Godot addon / BLB export tools.
+ * They have no equivalent in the original Skullmonkeys binary.
+ * ============================================================================= */
 
 /* -----------------------------------------------------------------------------
  * Level Data Packing (for BLB Export)

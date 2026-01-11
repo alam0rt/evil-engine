@@ -16,6 +16,10 @@ config/version="0.0.0-KLOGG_IS_DEAD"
 run/main_scene="res://demo/level_viewer.tscn"
 config/features=PackedStringArray("4.5")
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/blb_importer/plugin.cfg")
+
 [native_extensions]
 
 paths=["res://game.gdextension"]

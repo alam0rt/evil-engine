@@ -4,7 +4,13 @@
  * Provides access to Skullmonkeys' GAME.BLB archive format.
  * Accessor patterns match the original decompiled game code.
  * 
- * BLB Header Layout (0x1000 bytes):
+ * VERIFIED FUNCTIONS are documented with their original addresses.
+ * For 1:1 original game accessors, see blb_accessors.h.
+ * 
+ * EXPORT/WRITE FUNCTIONS are for the Godot addon only - they are
+ * NOT part of the original game (marked as TOOL-ONLY).
+ * 
+ * BLB Header Layout (0x1000 bytes, PAL version SLES-01090):
  *   0x000 - 0xB5F  Level metadata table (26 entries × 0x70 bytes)
  *   0xB60 - 0xCC7  Movie table (13 entries × 0x1C bytes)  
  *   0xCD0 - 0xECF  Sector table (32 entries × 0x10 bytes)
@@ -20,7 +26,7 @@
 #include "../psx/types.h"
 
 /* -----------------------------------------------------------------------------
- * Constants
+ * Constants (VERIFIED from Ghidra analysis)
  * -------------------------------------------------------------------------- */
 
 #define BLB_HEADER_SIZE     0x1000      /* 4096 bytes */
@@ -217,13 +223,22 @@ const TOCEntry* BLB_GetSegmentTOC(const BLBFile* blb, u16 sector_offset, u32* ou
 const u8* BLB_FindAsset(const BLBFile* blb, const u8* segment_start, 
                         u32 asset_id, u32* out_size);
 
+/* =============================================================================
+ * TOOL-ONLY CODE BELOW - NOT PART OF ORIGINAL GAME
+ * 
+ * The following functions are for the Godot addon / BLB export tools.
+ * They have no equivalent in the original Skullmonkeys binary.
+ * ============================================================================= */
+
 /* -----------------------------------------------------------------------------
- * BLB File Write Operations
+ * BLB File Write Operations (TOOL-ONLY)
  * -------------------------------------------------------------------------- */
 
 /**
  * Create a new BLB file in memory for writing.
  * The file is allocated with space for the specified number of levels.
+ * 
+ * TOOL-ONLY: Not present in original game.
  * 
  * @param level_count   Number of levels to allocate (1-26)
  * @return              BLB file handle, or NULL on error
@@ -233,6 +248,8 @@ BLBFile* BLB_Create(u8 level_count);
 /**
  * Set level metadata in BLB header.
  * This must be called before writing level data.
+ * 
+ * TOOL-ONLY: Not present in original game.
  * 
  * @param blb           BLB file handle
  * @param level_index   Level index (0-based)
@@ -248,6 +265,8 @@ int BLB_SetLevelMetadata(BLBFile* blb, u8 level_index,
 /**
  * Write segment data to BLB for a specific level and stage.
  * The data will be written to appropriate sectors and the header updated.
+ * 
+ * TOOL-ONLY: Not present in original game.
  * 
  * @param blb               BLB file handle
  * @param level_index       Level index (0-based)
