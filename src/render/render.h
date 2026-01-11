@@ -180,4 +180,23 @@ static inline u32 PSXColorToRGBA(u16 psx_color) {
 int RenderTileToRGBA(const LevelContext* ctx, u16 tile_index,
                      u8* out_rgba, int* out_width, int* out_height);
 
+/**
+ * Render an entire layer to an RGBA buffer.
+ * 
+ * @param ctx           Level context
+ * @param layer_index   Layer index (0-based)
+ * @param out_rgba      Output buffer (width * height * 4 bytes)
+ * @param buf_width     Buffer width in pixels
+ * @param buf_height    Buffer height in pixels
+ * @return              0 on success, -1 on error
+ */
+int RenderLayerToRGBA(const LevelContext* ctx, u32 layer_index,
+                      u8* out_rgba, int buf_width, int buf_height);
+
+/**
+ * Get layer dimensions in pixels.
+ */
+void GetLayerPixelDimensions(const LevelContext* ctx, u32 layer_index,
+                             int* out_width, int* out_height);
+
 #endif /* RENDER_H */

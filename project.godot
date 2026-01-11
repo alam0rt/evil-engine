@@ -1,6 +1,10 @@
 ; Engine configuration file.
 ; It's best edited using the editor UI and not directly,
 ; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -9,8 +13,8 @@ config_version=5
 config/name="Evil Engine"
 config/description="Skullmonkeys reimplementation"
 config/version="0.0.0-KLOGG_IS_DEAD"
-run/main_scene=""
-config/features=PackedStringArray("4.2")
+run/main_scene="res://demo/level_viewer.tscn"
+config/features=PackedStringArray("4.5")
 
 [native_extensions]
 

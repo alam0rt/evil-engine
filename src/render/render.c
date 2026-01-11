@@ -227,3 +227,90 @@ int RenderTileToRGBA(const LevelContext* ctx, u16 tile_index,
     
     return 0;
 }
+
+/* -----------------------------------------------------------------------------
+ * GetLayerPixelDimensions
+ * Get layer dimensions in pixels
+ * -------------------------------------------------------------------------- */
+
+void GetLayerPixelDimensions(const LevelContext* ctx, u32 layer_index,
+                             int* out_width, int* out_height) {
+    const LayerEntry* layer;
+    
+    if (out_width) *out_width = 0;
+    if (out_height) *out_height = 0;
+    
+    layer = Level_GetLayer(ctx, layer_index);
+    if (!layer) return;
+    
+    if (out_width) *out_width = layer->width * 16;
+    if (out_height) *out_height = layer->height * 16;
+}
+
+/* -----------------------------------------------------------------------------
+ * RenderLayerToRGBA
+ * Render an entire layer to an RGBA buffer
+ * -------------------------------------------------------------------------- */
+
+int RenderLayerToRGBA(const LevelContext* ctx, u32 layer_index,
+                      u8* out_rgba, int buf_width, int buf_height) {
+    const u16* tilemap;
+    const LayerEntry* layer;
+    u32 lw, lh;
+    u32 tx, ty;
+    u8 tile_rgba[16 * 16 * 4];
+    int tile_w, tile_h;
+    
+    if (!ctx || !out_rgba) return -1;
+    
+    layer = Level_GetLayer(ctx, layer_index);
+    if (!layer) return -1;
+    
+    tilemap = GetTilemapDataPtr(ctx, layer_index);
+    if (!tilemap) return -1;
+    
+    lw = layer->width;
+    lh = layer->height;
+    
+    for (ty = 0; ty < lh && (ty * 16) < (u32)buf_height; ty++) {
+        for (tx = 0; tx < lw && (tx * 16) < (u32)buf_width; tx++) {
+            u16 tile_entry;
+            u16 tile_index;
+            int px, py;
+            int x, y;
+            
+            tile_entry = tilemap[ty * lw + tx];
+            tile_index = tile_entry & 0xFFF;  /* bits 0-11 (12 bits) */
+            
+            if (tile_index == 0) continue;  /* transparent */
+            
+            /* Render tile to temporary buffer */
+            if (RenderTileToRGBA(ctx, tile_index, tile_rgba, &tile_w, &tile_h) != 0) {
+                continue;
+            }
+            
+            /* Copy to output image */
+            px = tx * 16;
+            py = ty * 16;
+            
+            for (y = 0; y < tile_h && (py + y) < buf_height; y++) {
+                for (x = 0; x < tile_w && (px + x) < buf_width; x++) {
+                    int src_idx = (y * tile_w + x) * 4;
+                    int dst_idx = ((py + y) * buf_width + (px + x)) * 4;
+                    u8 a = tile_rgba[src_idx + 3];
+                    
+                    /* Skip fully transparent pixels */
+                    if (a == 0) continue;
+                    
+                    /* Copy RGBA */
+                    out_rgba[dst_idx + 0] = tile_rgba[src_idx + 0];
+                    out_rgba[dst_idx + 1] = tile_rgba[src_idx + 1];
+                    out_rgba[dst_idx + 2] = tile_rgba[src_idx + 2];
+                    out_rgba[dst_idx + 3] = a;
+                }
+            }
+        }
+    }
+    
+    return 0;
+}

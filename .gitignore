@@ -18,3 +18,7 @@ build/
 
 .direnv/
 .envrc
+demo/
+
+# mayybe?
+game.gdextension.uid
