@@ -14,12 +14,17 @@ inc_dirs = include_directories(
   'gdextension'
 )
 
-# Portable game logic (no Godot dependencies)
-src_files = files(
-  'src/game.c',
+# Standalone C99 library (no Godot dependencies)
+lib_files = files(
+  'src/evil_engine.c',
   'src/blb/blb.c',
   'src/level/level.c',
   'src/render/render.c',
+)
+
+# Game logic (uses the library)
+game_files = files(
+  'src/game.c',
 )
 
 # GDExtension bindings
@@ -28,10 +33,28 @@ gdext_files = files(
   'gdextension/engine_node.c',
 )
 
-# Build shared library
+# Build standalone library (can be used by CLI tools)
+libevil = static_library('evil_engine',
+  lib_files,
+  include_directories: inc_dirs,
+  install: true,
+)
+
+# Build GDExtension shared library (Godot plugin)
 shared_library('evil_engine',
-  src_files + gdext_files,
+  lib_files + game_files + gdext_files,
   include_directories: inc_dirs,
   name_prefix: 'lib',
   install: true,
 )
+
+# Build CLI tools
+blb_info = executable('blb_info',
+  'src/tools/blb_info.c',
+  link_with: libevil,
+  include_directories: inc_dirs,
+  install: true,
+)
+
+# Note: GDExtension library includes blb_archive.c
+# which will be added once fully implemented

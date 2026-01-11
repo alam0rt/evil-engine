@@ -1,181 +1,220 @@
 /**
  * evil_engine.c - Public API Implementation
  * 
- * Wraps the authentic C99 engine code for use by GDExtension.
+ * Implements the standalone C99 library API.
+ * This wraps the internal BLB and level code with a clean public interface.
  */
 
 #include "evil_engine.h"
-#include "blb/blb.h"
-#include "level/level.h"
-#include "render/render.h"
 #include <stdlib.h>
 #include <string.h>
 
-struct EvilEngineContext {
-    BLBFile blb;
-    LevelContext level;
-    int blb_loaded;
-    int level_loaded;
-};
+/* -----------------------------------------------------------------------------
+ * BLB File Operations (READ)
+ * -------------------------------------------------------------------------- */
 
-EvilEngineContext* EvilEngine_Create(void) {
-    EvilEngineContext* ctx = (EvilEngineContext*)calloc(1, sizeof(EvilEngineContext));
-    if (ctx) {
-        Level_Init(&ctx->level);
-    }
-    return ctx;
-}
-
-void EvilEngine_Destroy(EvilEngineContext* ctx) {
-    if (!ctx) return;
+int EvilEngine_OpenBLB(const char* path, BLBFile** out_blb) {
+    BLBFile* blb;
     
-    if (ctx->level_loaded) {
-        Level_Unload(&ctx->level);
-    }
-    if (ctx->blb_loaded) {
-        BLB_Close(&ctx->blb);
-    }
-    free(ctx);
-}
-
-int EvilEngine_LoadBLB(EvilEngineContext* ctx, const char* path) {
-    if (!ctx || !path) return -1;
-    
-    /* Close existing if any */
-    if (ctx->level_loaded) {
-        Level_Unload(&ctx->level);
-        ctx->level_loaded = 0;
-    }
-    if (ctx->blb_loaded) {
-        BLB_Close(&ctx->blb);
-        ctx->blb_loaded = 0;
-    }
-    
-    if (BLB_Open(path, &ctx->blb) != 0) {
+    if (!path || !out_blb) {
         return -1;
     }
-    ctx->blb_loaded = 1;
-    return 0;
-}
-
-int EvilEngine_GetLevelCount(EvilEngineContext* ctx) {
-    if (!ctx || !ctx->blb_loaded) return 0;
-    return ctx->blb.level_count;
-}
-
-const char* EvilEngine_GetLevelName(EvilEngineContext* ctx, int index) {
-    if (!ctx || !ctx->blb_loaded) return NULL;
-    return BLB_GetLevelName(&ctx->blb, index);
-}
-
-int EvilEngine_LoadLevel(EvilEngineContext* ctx, int level_index, int stage_index) {
-    if (!ctx || !ctx->blb_loaded) return -1;
     
-    if (ctx->level_loaded) {
-        Level_Unload(&ctx->level);
-        ctx->level_loaded = 0;
-    }
-    
-    Level_Init(&ctx->level);
-    if (Level_Load(&ctx->level, &ctx->blb, (u8)level_index, (u8)stage_index) != 0) {
+    blb = (BLBFile*)calloc(1, sizeof(BLBFile));
+    if (!blb) {
         return -1;
     }
-    ctx->level_loaded = 1;
+    
+    if (BLB_Open(path, blb) != 0) {
+        free(blb);
+        return -1;
+    }
+    
+    *out_blb = blb;
     return 0;
 }
 
-int EvilEngine_GetLevelWidth(EvilEngineContext* ctx) {
-    if (!ctx || !ctx->level_loaded || !ctx->level.tile_header) return 0;
-    return ctx->level.tile_header->level_width * 16;
+void EvilEngine_CloseBLB(BLBFile* blb) {
+    if (!blb) return;
+    BLB_Close(blb);
+    free(blb);
 }
 
-int EvilEngine_GetLevelHeight(EvilEngineContext* ctx) {
-    if (!ctx || !ctx->level_loaded || !ctx->level.tile_header) return 0;
-    return ctx->level.tile_header->level_height * 16;
+int EvilEngine_GetLevelCount(const BLBFile* blb) {
+    if (!blb) return 0;
+    return (int)BLB_GetLevelCount(blb);
 }
 
-int EvilEngine_GetLayerCount(EvilEngineContext* ctx) {
-    if (!ctx || !ctx->level_loaded) return 0;
-    return (int)ctx->level.layer_count;
+const char* EvilEngine_GetLevelName(const BLBFile* blb, int index) {
+    if (!blb) return NULL;
+    return BLB_GetLevelName(blb, (u8)index);
 }
 
-int EvilEngine_GetEntityCount(EvilEngineContext* ctx) {
-    if (!ctx || !ctx->level_loaded) return 0;
-    return (int)ctx->level.entity_count;
+const char* EvilEngine_GetLevelID(const BLBFile* blb, int index) {
+    if (!blb) return NULL;
+    return BLB_GetLevelID(blb, (u8)index);
 }
 
-int EvilEngine_GetTotalTiles(EvilEngineContext* ctx) {
-    if (!ctx || !ctx->level_loaded) return 0;
-    return (int)ctx->level.total_tiles;
-}
+/* -----------------------------------------------------------------------------
+ * Level Operations (READ)
+ * -------------------------------------------------------------------------- */
 
-void EvilEngine_GetBackgroundColor(EvilEngineContext* ctx, u8* r, u8* g, u8* b) {
-    if (!ctx || !ctx->level_loaded) {
-        if (r) *r = 0;
-        if (g) *g = 0;
-        if (b) *b = 0;
-        return;
-    }
-    Level_GetBackgroundColor(&ctx->level, r, g, b);
-}
-
-void EvilEngine_GetSpawnPosition(EvilEngineContext* ctx, int* x, int* y) {
-    s32 sx, sy;
-    if (!ctx || !ctx->level_loaded) {
-        if (x) *x = 0;
-        if (y) *y = 0;
-        return;
-    }
-    Level_GetSpawnPosition(&ctx->level, &sx, &sy);
-    if (x) *x = (int)sx;
-    if (y) *y = (int)sy;
-}
-
-void EvilEngine_GetLayerDimensions(EvilEngineContext* ctx, int layer, int* width, int* height) {
-    if (!ctx || !ctx->level_loaded) {
-        if (width) *width = 0;
-        if (height) *height = 0;
-        return;
-    }
-    GetLayerPixelDimensions(&ctx->level, (u32)layer, width, height);
-}
-
-int EvilEngine_RenderTile(EvilEngineContext* ctx, int tile_index, 
-                          u8* out_rgba, int* out_width, int* out_height) {
-    if (!ctx || !ctx->level_loaded) return -1;
-    return RenderTileToRGBA(&ctx->level, (u16)tile_index, out_rgba, out_width, out_height);
-}
-
-int EvilEngine_RenderLayer(EvilEngineContext* ctx, int layer_index,
-                           u8* out_rgba, int buf_width, int buf_height) {
-    if (!ctx || !ctx->level_loaded) return -1;
-    return RenderLayerToRGBA(&ctx->level, (u32)layer_index, out_rgba, buf_width, buf_height);
-}
-
-int EvilEngine_RenderLevel(EvilEngineContext* ctx,
-                           u8* out_rgba, int buf_width, int buf_height) {
-    u8 bg_r, bg_g, bg_b;
-    u32 layer;
-    int i;
+int EvilEngine_LoadLevel(const BLBFile* blb, int level_index, int stage_index,
+                         LevelContext** out_level) {
+    LevelContext* level;
     
-    if (!ctx || !ctx->level_loaded || !out_rgba) return -1;
-    
-    /* Fill with background color */
-    Level_GetBackgroundColor(&ctx->level, &bg_r, &bg_g, &bg_b);
-    for (i = 0; i < buf_width * buf_height; i++) {
-        out_rgba[i * 4 + 0] = bg_r;
-        out_rgba[i * 4 + 1] = bg_g;
-        out_rgba[i * 4 + 2] = bg_b;
-        out_rgba[i * 4 + 3] = 255;
+    if (!blb || !out_level) {
+        return -1;
     }
     
-    /* Render layers back to front */
-    for (layer = 0; layer < ctx->level.layer_count; layer++) {
-        const LayerEntry* le = Level_GetLayer(&ctx->level, layer);
-        if (le && le->layer_type != 3) {  /* type 3 = skip */
-            RenderLayerToRGBA(&ctx->level, layer, out_rgba, buf_width, buf_height);
-        }
+    level = (LevelContext*)calloc(1, sizeof(LevelContext));
+    if (!level) {
+        return -1;
     }
     
+    Level_Init(level);
+    
+    if (Level_Load(level, blb, (u8)level_index, (u8)stage_index) != 0) {
+        free(level);
+        return -1;
+    }
+    
+    *out_level = level;
     return 0;
+}
+
+void EvilEngine_UnloadLevel(LevelContext* level) {
+    if (!level) return;
+    Level_Unload(level);
+    free(level);
+}
+
+/* -----------------------------------------------------------------------------
+ * Data Accessors (READ)
+ * -------------------------------------------------------------------------- */
+
+const TileHeader* EvilEngine_GetTileHeader(const LevelContext* level) {
+    if (!level) return NULL;
+    return level->tile_header;
+}
+
+const LayerEntry* EvilEngine_GetLayer(const LevelContext* level, int layer_index) {
+    if (!level) return NULL;
+    return Level_GetLayer(level, (u32)layer_index);
+}
+
+int EvilEngine_GetLayerCount(const LevelContext* level) {
+    if (!level) return 0;
+    return (int)level->layer_count;
+}
+
+const EntityDef* EvilEngine_GetEntities(const LevelContext* level, int* out_count) {
+    if (!level) {
+        if (out_count) *out_count = 0;
+        return NULL;
+    }
+    if (out_count) {
+        *out_count = (int)level->entity_count;
+    }
+    return level->entities;
+}
+
+const u16* EvilEngine_GetLayerTilemap(const LevelContext* level, int layer_index) {
+    if (!level) return NULL;
+    return Level_GetLayerTilemap(level, (u32)layer_index);
+}
+
+const u8* EvilEngine_GetTilePixels(const LevelContext* level, int tile_index,
+                                   int* out_is_8x8) {
+    if (!level) {
+        if (out_is_8x8) *out_is_8x8 = 0;
+        return NULL;
+    }
+    return Level_GetTilePixels(level, (u16)tile_index, out_is_8x8);
+}
+
+const u16* EvilEngine_GetTilePalette(const LevelContext* level, int tile_index) {
+    if (!level) return NULL;
+    return Level_GetTilePalette(level, (u16)tile_index);
+}
+
+int EvilEngine_GetTotalTiles(const LevelContext* level) {
+    if (!level) return 0;
+    return (int)Level_GetTotalTileCount(level);
+}
+
+/* -----------------------------------------------------------------------------
+ * BLB File Operations (WRITE)
+ * TODO: Implement in Phase 2
+ * -------------------------------------------------------------------------- */
+
+int EvilEngine_CreateBLB(int level_count, BLBFile** out_blb) {
+    (void)level_count;
+    (void)out_blb;
+    /* TODO: Implement BLB creation */
+    return -1;
+}
+
+int EvilEngine_SetLevelMetadata(BLBFile* blb, int level_index,
+                                const char* level_id, const char* level_name,
+                                int stage_count) {
+    (void)blb;
+    (void)level_index;
+    (void)level_id;
+    (void)level_name;
+    (void)stage_count;
+    /* TODO: Implement metadata setting */
+    return -1;
+}
+
+int EvilEngine_WriteLevelData(BLBFile* blb, int level_index, int stage_index,
+                              const u8* primary_data, u32 primary_size,
+                              const u8* secondary_data, u32 secondary_size,
+                              const u8* tertiary_data, u32 tertiary_size) {
+    (void)blb;
+    (void)level_index;
+    (void)stage_index;
+    (void)primary_data;
+    (void)primary_size;
+    (void)secondary_data;
+    (void)secondary_size;
+    (void)tertiary_data;
+    (void)tertiary_size;
+    /* TODO: Implement level data writing */
+    return -1;
+}
+
+int EvilEngine_SaveBLB(const BLBFile* blb, const char* path) {
+    (void)blb;
+    (void)path;
+    /* TODO: Implement BLB save */
+    return -1;
+}
+
+/* -----------------------------------------------------------------------------
+ * Level Operations (WRITE)
+ * TODO: Implement in Phase 2
+ * -------------------------------------------------------------------------- */
+
+u8* EvilEngine_BuildPrimarySegment(const LevelContext* level, u32* out_size) {
+    (void)level;
+    if (out_size) *out_size = 0;
+    /* TODO: Implement primary segment builder */
+    return NULL;
+}
+
+u8* EvilEngine_BuildSecondarySegment(const LevelContext* level, int stage, u32* out_size) {
+    (void)level;
+    (void)stage;
+    if (out_size) *out_size = 0;
+    /* TODO: Implement secondary segment builder */
+    return NULL;
+}
+
+u8* EvilEngine_BuildTertiarySegment(const LevelContext* level, int stage, u32* out_size) {
+    (void)level;
+    (void)stage;
+    if (out_size) *out_size = 0;
+    /* TODO: Implement tertiary segment builder */
+    return NULL;
 }

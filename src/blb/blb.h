@@ -217,4 +217,108 @@ const TOCEntry* BLB_GetSegmentTOC(const BLBFile* blb, u16 sector_offset, u32* ou
 const u8* BLB_FindAsset(const BLBFile* blb, const u8* segment_start, 
                         u32 asset_id, u32* out_size);
 
+/* -----------------------------------------------------------------------------
+ * BLB File Write Operations
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Create a new BLB file in memory for writing.
+ * The file is allocated with space for the specified number of levels.
+ * 
+ * @param level_count   Number of levels to allocate (1-26)
+ * @return              BLB file handle, or NULL on error
+ */
+BLBFile* BLB_Create(u8 level_count);
+
+/**
+ * Set level metadata in BLB header.
+ * This must be called before writing level data.
+ * 
+ * @param blb           BLB file handle
+ * @param level_index   Level index (0-based)
+ * @param level_id      4-character level ID (e.g., "SCIE")
+ * @param level_name    Level name (max 20 chars)
+ * @param stage_count   Number of stages (1-7)
+ * @return              0 on success, -1 on error
+ */
+int BLB_SetLevelMetadata(BLBFile* blb, u8 level_index, 
+                         const char* level_id, const char* level_name,
+                         u16 stage_count);
+
+/**
+ * Write segment data to BLB for a specific level and stage.
+ * The data will be written to appropriate sectors and the header updated.
+ * 
+ * @param blb               BLB file handle
+ * @param level_index       Level index (0-based)
+ * @param stage_index       Stage index (0-based, 0 = primary)
+ * @param segment_data      Segment data buffer
+ * @param segment_size      Size of segment data in bytes
+ * @param segment_type      0=primary, 1=secondary, 2=tertiary
+ * @return                  0 on success, -1 on error
+ */
+int BLB_WriteSegment(BLBFile* blb, u8 level_index, u8 stage_index,
+                     const u8* segment_data, u32 segment_size,
+                     u8 segment_type);
+
+/**
+ * Finalize and write BLB to file.
+ * This writes the complete BLB archive to disk.
+ * 
+ * @param blb           BLB file handle
+ * @param path          Output file path
+ * @return              0 on success, -1 on error
+ */
+int BLB_WriteToFile(const BLBFile* blb, const char* path);
+
+/* -----------------------------------------------------------------------------
+ * Segment Building Helpers
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Helper structure for building segment TOCs.
+ */
+typedef struct {
+    u32 asset_count;
+    u32 capacity;
+    TOCEntry* entries;
+    u8* data;
+    u32 data_size;
+    u32 data_capacity;
+} SegmentBuilder;
+
+/**
+ * Initialize a segment builder.
+ * @param builder       Segment builder to initialize
+ * @return              0 on success, -1 on error
+ */
+int BLB_SegmentBuilder_Init(SegmentBuilder* builder);
+
+/**
+ * Add an asset to the segment builder.
+ * @param builder       Segment builder
+ * @param asset_id      Asset type ID
+ * @param data          Asset data
+ * @param size          Asset data size
+ * @return              0 on success, -1 on error
+ */
+int BLB_SegmentBuilder_AddAsset(SegmentBuilder* builder, u32 asset_id,
+                                const u8* data, u32 size);
+
+/**
+ * Finalize the segment and get the output buffer.
+ * Caller must free the returned buffer.
+ * 
+ * @param builder       Segment builder
+ * @param out_size      Output: total segment size
+ * @return              Allocated segment data, or NULL on error
+ */
+u8* BLB_SegmentBuilder_Finalize(SegmentBuilder* builder, u32* out_size);
+
+/**
+ * Free segment builder resources.
+ * @param builder       Segment builder to free
+ */
+void BLB_SegmentBuilder_Free(SegmentBuilder* builder);
+
 #endif /* BLB_H */

@@ -261,3 +261,279 @@ const u8* BLB_FindAsset(const BLBFile* blb, const u8* segment_start,
     if (out_size) *out_size = 0;
     return NULL;
 }
+
+/* -----------------------------------------------------------------------------
+ * BLB File Write Operations
+ * -------------------------------------------------------------------------- */
+
+BLBFile* BLB_Create(u8 level_count) {
+    BLBFile* blb;
+    u32 total_size;
+    
+    if (level_count == 0 || level_count > BLB_MAX_LEVELS) {
+        return NULL;
+    }
+    
+    blb = (BLBFile*)calloc(1, sizeof(BLBFile));
+    if (!blb) {
+        return NULL;
+    }
+    
+    /* Allocate initial space: header + some sectors */
+    /* Start with 64MB which should be plenty for most BLB files */
+    total_size = 64 * 1024 * 1024;
+    blb->data = (u8*)calloc(1, total_size);
+    if (!blb->data) {
+        free(blb);
+        return NULL;
+    }
+    
+    blb->size = total_size;
+    blb->header = blb->data;
+    blb->level_count = level_count;
+    blb->movie_count = 0;
+    blb->sector_count = 0;
+    blb->is_jp = 0;  /* Default to PAL layout */
+    
+    /* Write counts to header */
+    blb->header[BLB_OFF_LEVEL_COUNT] = level_count;
+    blb->header[BLB_OFF_MOVIE_COUNT] = 0;
+    blb->header[BLB_OFF_SECTOR_COUNT] = 0;
+    
+    return blb;
+}
+
+int BLB_SetLevelMetadata(BLBFile* blb, u8 level_index,
+                         const char* level_id, const char* level_name,
+                         u16 stage_count) {
+    u8* entry;
+    int i;
+    
+    if (!blb || !level_id || !level_name) {
+        return -1;
+    }
+    
+    if (level_index >= blb->level_count) {
+        return -1;
+    }
+    
+    if (stage_count == 0 || stage_count > BLB_MAX_STAGES) {
+        return -1;
+    }
+    
+    /* Get level entry */
+    entry = blb->header + BLB_OFF_LEVEL_TABLE + (level_index * BLB_LEVEL_ENTRY_SIZE);
+    
+    /* Write level ID (4 chars + null) */
+    memset(entry + LEVEL_OFF_LEVEL_ID, 0, 5);
+    for (i = 0; i < 4 && level_id[i]; i++) {
+        entry[LEVEL_OFF_LEVEL_ID + i] = (u8)level_id[i];
+    }
+    
+    /* Write level name (max 20 chars + null) */
+    memset(entry + LEVEL_OFF_LEVEL_NAME, 0, 21);
+    for (i = 0; i < 20 && level_name[i]; i++) {
+        entry[LEVEL_OFF_LEVEL_NAME + i] = (u8)level_name[i];
+    }
+    
+    /* Write stage count */
+    entry[LEVEL_OFF_STAGE_COUNT + 0] = (u8)(stage_count & 0xFF);
+    entry[LEVEL_OFF_STAGE_COUNT + 1] = (u8)((stage_count >> 8) & 0xFF);
+    
+    return 0;
+}
+
+int BLB_WriteSegment(BLBFile* blb, u8 level_index, u8 stage_index,
+                     const u8* segment_data, u32 segment_size,
+                     u8 segment_type) {
+    (void)blb;
+    (void)level_index;
+    (void)stage_index;
+    (void)segment_data;
+    (void)segment_size;
+    (void)segment_type;
+    
+    /* TODO: Implement segment writing
+     * This needs to:
+     * 1. Find next available sector
+     * 2. Write segment data to sectors
+     * 3. Update level entry with sector offset/count
+     * 4. Update BLB file size if needed
+     */
+    return -1;
+}
+
+int BLB_WriteToFile(const BLBFile* blb, const char* path) {
+    FILE* f;
+    
+    if (!blb || !path || !blb->data) {
+        return -1;
+    }
+    
+    f = fopen(path, "wb");
+    if (!f) {
+        return -1;
+    }
+    
+    /* Write entire BLB data */
+    if (fwrite(blb->data, 1, blb->size, f) != blb->size) {
+        fclose(f);
+        return -1;
+    }
+    
+    fclose(f);
+    return 0;
+}
+
+/* -----------------------------------------------------------------------------
+ * Segment Building Helpers
+ * -------------------------------------------------------------------------- */
+
+int BLB_SegmentBuilder_Init(SegmentBuilder* builder) {
+    if (!builder) {
+        return -1;
+    }
+    
+    memset(builder, 0, sizeof(SegmentBuilder));
+    
+    /* Allocate initial capacity */
+    builder->capacity = 32;
+    builder->entries = (TOCEntry*)calloc(builder->capacity, sizeof(TOCEntry));
+    if (!builder->entries) {
+        return -1;
+    }
+    
+    builder->data_capacity = 1024 * 1024;  /* 1MB initial */
+    builder->data = (u8*)malloc(builder->data_capacity);
+    if (!builder->data) {
+        free(builder->entries);
+        return -1;
+    }
+    
+    builder->asset_count = 0;
+    builder->data_size = 0;
+    
+    return 0;
+}
+
+int BLB_SegmentBuilder_AddAsset(SegmentBuilder* builder, u32 asset_id,
+                                const u8* data, u32 size) {
+    u32 offset;
+    
+    if (!builder || !data) {
+        return -1;
+    }
+    
+    /* Ensure capacity */
+    if (builder->asset_count >= builder->capacity) {
+        u32 new_cap = builder->capacity * 2;
+        TOCEntry* new_entries = (TOCEntry*)realloc(builder->entries, 
+                                                   new_cap * sizeof(TOCEntry));
+        if (!new_entries) {
+            return -1;
+        }
+        builder->entries = new_entries;
+        builder->capacity = new_cap;
+    }
+    
+    /* Calculate offset in segment (after TOC) */
+    /* TOC is: u32 count + TOCEntry array */
+    offset = 4 + (builder->asset_count + 1) * sizeof(TOCEntry);
+    
+    /* Ensure data capacity */
+    while (builder->data_size + size > builder->data_capacity) {
+        u32 new_cap = builder->data_capacity * 2;
+        u8* new_data = (u8*)realloc(builder->data, new_cap);
+        if (!new_data) {
+            return -1;
+        }
+        builder->data = new_data;
+        builder->data_capacity = new_cap;
+    }
+    
+    /* Add TOC entry */
+    builder->entries[builder->asset_count].id = asset_id;
+    builder->entries[builder->asset_count].size = size;
+    builder->entries[builder->asset_count].offset = offset + builder->data_size;
+    
+    /* Copy data */
+    memcpy(builder->data + builder->data_size, data, size);
+    builder->data_size += size;
+    builder->asset_count++;
+    
+    return 0;
+}
+
+u8* BLB_SegmentBuilder_Finalize(SegmentBuilder* builder, u32* out_size) {
+    u8* segment;
+    u32 total_size;
+    u32 toc_size;
+    u32 i;
+    
+    if (!builder || !out_size) {
+        return NULL;
+    }
+    
+    /* Calculate total size */
+    toc_size = 4 + builder->asset_count * sizeof(TOCEntry);
+    total_size = toc_size + builder->data_size;
+    
+    /* Allocate final segment */
+    segment = (u8*)malloc(total_size);
+    if (!segment) {
+        return NULL;
+    }
+    
+    /* Write TOC count */
+    segment[0] = (u8)(builder->asset_count & 0xFF);
+    segment[1] = (u8)((builder->asset_count >> 8) & 0xFF);
+    segment[2] = (u8)((builder->asset_count >> 16) & 0xFF);
+    segment[3] = (u8)((builder->asset_count >> 24) & 0xFF);
+    
+    /* Write TOC entries */
+    for (i = 0; i < builder->asset_count; i++) {
+        u8* entry = segment + 4 + i * sizeof(TOCEntry);
+        const TOCEntry* src = &builder->entries[i];
+        
+        /* Write as little-endian */
+        entry[0] = (u8)(src->id & 0xFF);
+        entry[1] = (u8)((src->id >> 8) & 0xFF);
+        entry[2] = (u8)((src->id >> 16) & 0xFF);
+        entry[3] = (u8)((src->id >> 24) & 0xFF);
+        
+        entry[4] = (u8)(src->size & 0xFF);
+        entry[5] = (u8)((src->size >> 8) & 0xFF);
+        entry[6] = (u8)((src->size >> 16) & 0xFF);
+        entry[7] = (u8)((src->size >> 24) & 0xFF);
+        
+        entry[8] = (u8)(src->offset & 0xFF);
+        entry[9] = (u8)((src->offset >> 8) & 0xFF);
+        entry[10] = (u8)((src->offset >> 16) & 0xFF);
+        entry[11] = (u8)((src->offset >> 24) & 0xFF);
+    }
+    
+    /* Copy asset data */
+    memcpy(segment + toc_size, builder->data, builder->data_size);
+    
+    *out_size = total_size;
+    return segment;
+}
+
+void BLB_SegmentBuilder_Free(SegmentBuilder* builder) {
+    if (!builder) return;
+    
+    if (builder->entries) {
+        free(builder->entries);
+        builder->entries = NULL;
+    }
+    
+    if (builder->data) {
+        free(builder->data);
+        builder->data = NULL;
+    }
+    
+    builder->asset_count = 0;
+    builder->capacity = 0;
+    builder->data_size = 0;
+    builder->data_capacity = 0;
+}

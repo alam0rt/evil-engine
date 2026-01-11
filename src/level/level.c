@@ -280,3 +280,194 @@ void Level_GetSpawnPosition(const LevelContext* ctx, s32* x, s32* y) {
     if (x) *x = ctx->tile_header->spawn_x * 16 + 8;
     if (y) *y = ctx->tile_header->spawn_y * 16 + 15;
 }
+
+/* -----------------------------------------------------------------------------
+ * Level Data Packing (for BLB Export)
+ * -------------------------------------------------------------------------- */
+
+u8* Level_PackTilemap(const u16* tilemap_data, u32 width, u32 height, u32* out_size) {
+    u8* packed;
+    u32 size;
+    u32 i;
+    
+    if (!tilemap_data || !out_size) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Tilemap is just raw u16 array */
+    size = width * height * 2;
+    packed = (u8*)malloc(size);
+    if (!packed) {
+        *out_size = 0;
+        return NULL;
+    }
+    
+    /* Write as little-endian u16 values */
+    for (i = 0; i < width * height; i++) {
+        packed[i * 2 + 0] = (u8)(tilemap_data[i] & 0xFF);
+        packed[i * 2 + 1] = (u8)((tilemap_data[i] >> 8) & 0xFF);
+    }
+    
+    *out_size = size;
+    return packed;
+}
+
+u8* Level_PackLayers(const LayerEntry* layers, u32 count, u32* out_size) {
+    u8* packed;
+    u32 size;
+    
+    if (!layers || !out_size) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Layer entries are 92 bytes each */
+    size = count * sizeof(LayerEntry);
+    packed = (u8*)malloc(size);
+    if (!packed) {
+        *out_size = 0;
+        return NULL;
+    }
+    
+    /* Direct copy (binary compatible) */
+    memcpy(packed, layers, size);
+    
+    *out_size = size;
+    return packed;
+}
+
+u8* Level_PackEntities(const EntityDef* entities, u32 count, u32* out_size) {
+    u8* packed;
+    u32 size;
+    
+    if (!entities || !out_size) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Entity definitions are 24 bytes each */
+    size = count * sizeof(EntityDef);
+    packed = (u8*)malloc(size);
+    if (!packed) {
+        *out_size = 0;
+        return NULL;
+    }
+    
+    /* Direct copy (binary compatible) */
+    memcpy(packed, entities, size);
+    
+    *out_size = size;
+    return packed;
+}
+
+u8* Level_PackTilePixels(const u8* pixels, u32 tile_count, u32* out_size) {
+    u8* packed;
+    u32 size;
+    
+    if (!pixels || !out_size) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* TODO: Determine exact size based on tile types (16x16 vs 8x8)
+     * For now, assume all 16x16 tiles = 256 bytes each */
+    size = tile_count * 256;
+    packed = (u8*)malloc(size);
+    if (!packed) {
+        *out_size = 0;
+        return NULL;
+    }
+    
+    /* Direct copy */
+    memcpy(packed, pixels, size);
+    
+    *out_size = size;
+    return packed;
+}
+
+u8* Level_PackPalettes(const u16* palettes, u32 palette_count, u32* out_size) {
+    u8* packed;
+    u32 size;
+    u32 i;
+    
+    if (!palettes || !out_size) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Each palette is 256 colors × 2 bytes (PSX 15-bit RGB) */
+    size = palette_count * 256 * 2;
+    packed = (u8*)malloc(size);
+    if (!packed) {
+        *out_size = 0;
+        return NULL;
+    }
+    
+    /* Write as little-endian u16 values */
+    for (i = 0; i < palette_count * 256; i++) {
+        packed[i * 2 + 0] = (u8)(palettes[i] & 0xFF);
+        packed[i * 2 + 1] = (u8)((palettes[i] >> 8) & 0xFF);
+    }
+    
+    *out_size = size;
+    return packed;
+}
+
+u8* Level_PackTileHeader(const TileHeader* header, u32* out_size) {
+    u8* packed;
+    
+    if (!header || !out_size) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* TileHeader is 36 bytes */
+    packed = (u8*)malloc(sizeof(TileHeader));
+    if (!packed) {
+        *out_size = 0;
+        return NULL;
+    }
+    
+    /* Direct copy (binary compatible) */
+    memcpy(packed, header, sizeof(TileHeader));
+    
+    *out_size = sizeof(TileHeader);
+    return packed;
+}
+
+u8* Level_BuildPrimarySegment(const LevelContext* ctx, u32* out_size) {
+    (void)ctx;
+    if (out_size) *out_size = 0;
+    
+    /* TODO: Implement primary segment builder
+     * This needs to:
+     * 1. Create SegmentBuilder
+     * 2. Pack and add tile header (Asset 100)
+     * 3. Pack and add tile pixels (Asset 300)
+     * 4. Pack and add palettes (Asset 400)
+     * 5. Pack and add tilemap container (Asset 200)
+     * 6. Pack and add layer entries (Asset 201)
+     * 7. Pack and add entities (Asset 501)
+     * 8. Finalize segment
+     */
+    return NULL;
+}
+
+u8* Level_BuildSecondarySegment(const LevelContext* ctx, u8 stage, u32* out_size) {
+    (void)ctx;
+    (void)stage;
+    if (out_size) *out_size = 0;
+    
+    /* TODO: Implement secondary segment builder */
+    return NULL;
+}
+
+u8* Level_BuildTertiarySegment(const LevelContext* ctx, u8 stage, u32* out_size) {
+    (void)ctx;
+    (void)stage;
+    if (out_size) *out_size = 0;
+    
+    /* TODO: Implement tertiary segment builder */
+    return NULL;
+}
