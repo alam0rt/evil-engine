@@ -1,0 +1,41 @@
+[gd_scene load_steps=4 format=3 uid="uid://bvj5x7xkqy4wr"]
+
+[ext_resource type="Script" path="res://demo/level_loader.gd" id="1_loader"]
+[ext_resource type="Script" path="res://demo/level_scene.gd" id="2_scene"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_hud"]
+font_size = 12
+outline_size = 2
+outline_color = Color(0, 0, 0, 1)
+
+[node name="LevelScene" type="Node2D"]
+script = ExtResource("2_scene")
+
+[node name="LevelLoader" type="Node2D" parent="."]
+script = ExtResource("1_loader")
+assets_path = "/tmp/scie_assets"
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(160, 120)
+zoom = Vector2(2, 2)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="InfoLabel" type="Label" parent="HUD"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 300.0
+offset_bottom = 60.0
+text = "Loading..."
+label_settings = SubResource("LabelSettings_hud")
+
+[node name="ControlsLabel" type="Label" parent="HUD"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -50.0
+offset_right = 400.0
+offset_bottom = -10.0
+text = "Arrow keys: Move | +/-: Zoom | E: Entities | S: Spawn | H: HUD"
+label_settings = SubResource("LabelSettings_hud")
