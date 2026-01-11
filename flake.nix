@@ -4,13 +4,9 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    godot-headers = {
-      url = "github:godotengine/godot-headers";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, godot-headers }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -33,7 +29,6 @@
           ];
 
           shellHook = ''
-            export GODOT_HEADERS="${godot-headers}"
             echo "Evil Engine Development Environment"
             echo "===================================="
             echo "Godot: $(godot4 --version 2>/dev/null || echo 'available')"
@@ -44,6 +39,10 @@
             echo "  meson setup build    - Configure build"
             echo "  ninja -C build       - Build GDExtension"
             echo "  godot4 --editor .    - Open in Godot"
+            echo ""
+            echo "Note: include/gdextension_interface.h is pre-generated."
+            echo "To regenerate: godot4 --headless --dump-gdextension-interface"
+            echo "               mv gdextension_interface.h include/"
           '';
         };
 
@@ -53,10 +52,6 @@
           src = ./.;
 
           nativeBuildInputs = with pkgs; [ meson ninja pkg-config ];
-
-          mesonFlags = [
-            "-Dgodot_headers=${godot-headers}"
-          ];
 
           installPhase = ''
             mkdir -p $out/lib

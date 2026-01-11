@@ -18,22 +18,6 @@
         "type": "github"
       }
     },
-    "godot-headers": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1767874613,
-        "narHash": "sha256-uCE05CkXgw4ruVqLNK1K9YlRs41xzx3ynOt4ZxFoEs8=",
-        "owner": "godotengine",
-        "repo": "godot-headers",
-        "rev": "9aea2a115dfc6b5b403fd62882f9b872bf5948c1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "godotengine",
-        "repo": "godot-headers",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1767892417,
@@ -53,7 +37,6 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "godot-headers": "godot-headers",
         "nixpkgs": "nixpkgs"
       }
     },

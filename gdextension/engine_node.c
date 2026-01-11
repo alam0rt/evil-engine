@@ -1,4 +1,5 @@
 #include <gdextension_interface.h>
+#include <stdlib.h>
 #include "game.h"
 
 /*
