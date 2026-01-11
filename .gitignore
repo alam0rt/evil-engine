@@ -10,6 +10,7 @@ build/
 
 # Game assets (copyrighted, do not commit)
 assets/
+scenes/
 
 # Editor
 *.swp
