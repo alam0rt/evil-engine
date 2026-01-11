@@ -68,9 +68,15 @@ var menu_stage_list: ItemList
 var menu_selected_level: int = 0
 
 func _ready() -> void:
+	print("[ParallaxViewer] Starting up...")
+	
+	# Parse command-line arguments: --level N --stage N
+	parse_command_line_args()
+	
 	# Set window size
 	get_window().size = Vector2i(PSX_WIDTH * scale_factor, PSX_HEIGHT * scale_factor)
 	get_window().title = "Skullmonkeys Level Viewer (PSX 320x240)"
+	print("[ParallaxViewer] Window size: %dx%d (scale %d)" % [PSX_WIDTH * scale_factor, PSX_HEIGHT * scale_factor, scale_factor])
 	
 	# Create SubViewport for PSX resolution
 	viewport = SubViewport.new()
@@ -78,6 +84,7 @@ func _ready() -> void:
 	viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
+	print("[ParallaxViewer] Created viewport %dx%d" % [PSX_WIDTH, PSX_HEIGHT])
 	
 	# Create sprite to display the viewport
 	viewport_sprite = Sprite2D.new()
@@ -105,6 +112,55 @@ func _ready() -> void:
 		else:
 			push_warning("No BLB file specified. Set blb_path in inspector.")
 
+func parse_command_line_args() -> void:
+	## Parse command-line arguments for level/stage selection
+	## Usage: godot --path . scene.tscn -- --level 5 --stage 2
+	var args = OS.get_cmdline_user_args()
+	print("[ParallaxViewer] Command-line args: %s" % [args])
+	
+	var i = 0
+	while i < args.size():
+		var arg = args[i]
+		if arg == "--level" or arg == "-l":
+			if i + 1 < args.size():
+				var val = int(args[i + 1])
+				if val >= 0 and val < 26:
+					level_index = val
+					print("[ParallaxViewer] Set level to %d (%s)" % [level_index, EntitySpritesClass.get_level_folder(level_index)])
+				else:
+					push_warning("Invalid level index: %d (must be 0-25)" % val)
+				i += 1
+		elif arg == "--stage" or arg == "-s":
+			if i + 1 < args.size():
+				var val = int(args[i + 1])
+				if val >= 0 and val < 6:
+					stage_index = val
+					print("[ParallaxViewer] Set stage to %d" % stage_index)
+				else:
+					push_warning("Invalid stage index: %d (must be 0-5)" % val)
+				i += 1
+		elif arg == "--blb" or arg == "-b":
+			if i + 1 < args.size():
+				blb_path = args[i + 1]
+				print("[ParallaxViewer] Set BLB path to %s" % blb_path)
+				i += 1
+		elif arg == "--help" or arg == "-h":
+			print("Usage: godot --path . demo/parallax_viewer.tscn -- [OPTIONS]")
+			print("Options:")
+			print("  --level N, -l N   Load level N (0-25)")
+			print("  --stage N, -s N   Load stage N (0-5)")
+			print("  --blb PATH, -b    Path to GAME.BLB file")
+			print("  --help, -h        Show this help")
+			print("")
+			print("Levels: MENU(0), GLEN(1), SCIE(2), CRYS(3), WEED(4), HEAD(5),")
+			print("        BOIL(6), TMPL(7), CAVE(8), FOOD(9), CSTL(10), CLOU(11),")
+			print("        PHRO(12), WIZZ(13), BRG1(14), MOSS(15), SOAR(16), EGGS(17),")
+			print("        FINN(18), GLID(19), KLOG(20), SNOW(21), EVIL(22), RUNN(23),")
+			print("        MEGA(24), SEVN(25)")
+			get_tree().quit()
+			return
+		i += 1
+
 func create_hud() -> void:
 	# Create a CanvasLayer for HUD (renders on top of everything)
 	var canvas = CanvasLayer.new()
@@ -120,6 +176,106 @@ func create_hud() -> void:
 	hud_label.add_theme_constant_override("shadow_offset_x", 1)
 	hud_label.add_theme_constant_override("shadow_offset_y", 1)
 	canvas.add_child(hud_label)
+	
+	# Create level selection menu
+	create_level_menu(canvas)
+
+func create_level_menu(canvas: CanvasLayer) -> void:
+	# Main panel
+	menu_panel = Panel.new()
+	menu_panel.size = Vector2(400, 350)
+	menu_panel.position = Vector2(
+		(PSX_WIDTH * scale_factor - 400) / 2,
+		(PSX_HEIGHT * scale_factor - 350) / 2
+	)
+	menu_panel.visible = false
+	canvas.add_child(menu_panel)
+	
+	# Title label
+	var title = Label.new()
+	title.text = "Select Level"
+	title.position = Vector2(150, 10)
+	title.add_theme_font_size_override("font_size", 18)
+	menu_panel.add_child(title)
+	
+	# Level list (left side)
+	var level_label = Label.new()
+	level_label.text = "Level:"
+	level_label.position = Vector2(10, 40)
+	menu_panel.add_child(level_label)
+	
+	menu_list = ItemList.new()
+	menu_list.position = Vector2(10, 60)
+	menu_list.size = Vector2(180, 250)
+	menu_list.select_mode = ItemList.SELECT_SINGLE
+	
+	# Populate level list
+	for i in range(EntitySpritesClass.LEVEL_FOLDERS.size()):
+		var folder = EntitySpritesClass.LEVEL_FOLDERS[i]
+		menu_list.add_item("%02d: %s" % [i, folder])
+	
+	menu_list.select(level_index)
+	menu_list.item_selected.connect(_on_level_selected)
+	menu_panel.add_child(menu_list)
+	
+	# Stage list (right side)
+	var stage_label = Label.new()
+	stage_label.text = "Stage:"
+	stage_label.position = Vector2(210, 40)
+	menu_panel.add_child(stage_label)
+	
+	menu_stage_list = ItemList.new()
+	menu_stage_list.position = Vector2(210, 60)
+	menu_stage_list.size = Vector2(180, 150)
+	menu_stage_list.select_mode = ItemList.SELECT_SINGLE
+	
+	# Populate stage list
+	for i in range(6):
+		menu_stage_list.add_item("Stage %d" % i)
+	
+	menu_stage_list.select(stage_index)
+	menu_stage_list.item_selected.connect(_on_stage_selected)
+	menu_panel.add_child(menu_stage_list)
+	
+	# Load button
+	var load_btn = Button.new()
+	load_btn.text = "Load Level"
+	load_btn.position = Vector2(210, 230)
+	load_btn.size = Vector2(180, 40)
+	load_btn.pressed.connect(_on_load_pressed)
+	menu_panel.add_child(load_btn)
+	
+	# Close button
+	var close_btn = Button.new()
+	close_btn.text = "Close (Tab/Esc)"
+	close_btn.position = Vector2(210, 280)
+	close_btn.size = Vector2(180, 30)
+	close_btn.pressed.connect(toggle_level_menu)
+	menu_panel.add_child(close_btn)
+
+func toggle_level_menu() -> void:
+	menu_visible = not menu_visible
+	menu_panel.visible = menu_visible
+	auto_scroll = false if menu_visible else auto_scroll
+	
+	if menu_visible:
+		# Update selection to current level/stage
+		menu_list.select(level_index)
+		menu_list.ensure_current_is_visible()
+		menu_stage_list.select(stage_index)
+		menu_selected_level = level_index
+
+func _on_level_selected(idx: int) -> void:
+	menu_selected_level = idx
+
+func _on_stage_selected(idx: int) -> void:
+	pass  # Stage selection is read when loading
+
+func _on_load_pressed() -> void:
+	level_index = menu_list.get_selected_items()[0] if menu_list.get_selected_items().size() > 0 else level_index
+	stage_index = menu_stage_list.get_selected_items()[0] if menu_stage_list.get_selected_items().size() > 0 else stage_index
+	toggle_level_menu()
+	render_layers()
 
 func update_window_scaling() -> void:
 	## Toggle between PSX mode (fixed scale) and fit-to-window mode
@@ -174,8 +330,8 @@ Index: %d  Stage: %d  (%s)
 Size: %dx%d px
 Layers: %d  Entities: %d (%s)
 Camera: (%d, %d) tile (%d, %d)
-[H]UD [E]ntities [Space]Scroll [S]pawn [F]it
-[PgUp/Dn] Prev/Next  [R]eload""" % [
+[Tab/L] Level Menu  [H]UD  [E]ntities
+[Space] Scroll  [S]pawn  [F]it  [R]eload""" % [
 		level_name,
 		level_index, stage_index, fit_str,
 		level_width, level_height,
@@ -184,32 +340,45 @@ Camera: (%d, %d) tile (%d, %d)
 	]
 
 func render_layers() -> void:
-	print("Rendering level %d stage %d layers from %s" % [level_index, stage_index, blb_path])
+	var level_name_str = EntitySpritesClass.get_level_folder(level_index)
+	print("")
+	print("========================================")
+	print("[ParallaxViewer] Loading level %d (%s) stage %d" % [level_index, level_name_str, stage_index])
+	print("[ParallaxViewer] BLB file: %s" % blb_path)
+	print("========================================")
 	
 	var render_tool = ProjectSettings.globalize_path("res://build/render_layers")
 	var output_dir = "/tmp/evil_layers"
 	
 	# Check if tool exists
 	if not FileAccess.file_exists(render_tool):
-		push_error("render_layers tool not found at: " + render_tool)
+		push_error("[ParallaxViewer] render_layers tool not found at: " + render_tool)
 		return
+	print("[ParallaxViewer] Using render tool: %s" % render_tool)
 	
 	# Create output directory
 	DirAccess.make_dir_recursive_absolute(output_dir)
+	print("[ParallaxViewer] Output directory: %s" % output_dir)
 	
 	# Run the render tool
 	var args = [blb_path, str(level_index), str(stage_index), output_dir]
+	print("[ParallaxViewer] Running: %s %s" % [render_tool, " ".join(args)])
 	var output = []
 	var exit_code = OS.execute(render_tool, args, output, true)
 	
 	if exit_code != 0:
-		push_error("render_layers failed: " + str(output))
+		push_error("[ParallaxViewer] render_layers failed with exit code %d" % exit_code)
+		push_error("[ParallaxViewer] Output: %s" % str(output))
 		return
+	print("[ParallaxViewer] Render tool completed successfully")
 	
 	# Load metadata
+	print("[ParallaxViewer] Loading metadata...")
 	load_metadata(output_dir + "/metadata.txt")
+	print("[ParallaxViewer] Parsed %d layers, %d entities" % [layers.size(), entities.size()])
 	
 	# Set background color
+	print("[ParallaxViewer] Background color: RGB(%d, %d, %d)" % [int(bg_color.r * 255), int(bg_color.g * 255), int(bg_color.b * 255)])
 	RenderingServer.set_default_clear_color(bg_color)
 	viewport.transparent_bg = false
 	
@@ -222,24 +391,33 @@ func render_layers() -> void:
 	viewport.move_child(bg_rect, 0)  # Move to back
 	
 	# Load each layer image
+	print("[ParallaxViewer] Loading layer images...")
 	load_layer_images(output_dir)
 	
 	# Start camera at spawn point
-	camera_x = clamp(spawn_x - PSX_WIDTH / 2.0, 0, level_width - PSX_WIDTH)
+	camera_x = clamp(spawn_x - PSX_WIDTH / 2.0, 0, level_width - PSX_HEIGHT)
 	camera_y = clamp(spawn_y - PSX_HEIGHT / 2.0, 0, level_height - PSX_HEIGHT)
+	print("[ParallaxViewer] Initial camera: (%.1f, %.1f)" % [camera_x, camera_y])
 	
 	# Load entity sprites from extracted folder
+	print("[ParallaxViewer] Loading entity sprites...")
 	load_entity_sprites()
 	
-	print("Level loaded: %dx%d, spawn at (%d, %d)" % [level_width, level_height, spawn_x, spawn_y])
-	print("Loaded %d layers with parallax, %d entity sprites" % [layers.size(), entity_textures.size()])
+	print("")
+	print("[ParallaxViewer] === Level loaded ===")
+	print("[ParallaxViewer] Level: %s (index %d, stage %d)" % [level_name, level_index, stage_index])
+	print("[ParallaxViewer] Size: %dx%d pixels, spawn at (%d, %d)" % [level_width, level_height, spawn_x, spawn_y])
+	print("[ParallaxViewer] Layers: %d, Entities: %d, Entity textures: %d" % [layers.size(), entities.size(), entity_textures.size()])
+	print("========================================")
+	print("")
 
 func load_metadata(path: String) -> void:
 	var file = FileAccess.open(path, FileAccess.READ)
 	if file == null:
-		push_error("Cannot open metadata: " + path)
+		push_error("[ParallaxViewer] Cannot open metadata: " + path)
 		return
 	
+	print("[ParallaxViewer] Reading metadata from: %s" % path)
 	layers.clear()
 	entities.clear()
 	var current_layer: Dictionary = {}
@@ -323,6 +501,7 @@ func load_metadata(path: String) -> void:
 
 func load_layer_images(dir_path: String) -> void:
 	# Clear existing sprites
+	print("[ParallaxViewer] Clearing %d existing layer sprites" % layer_sprites.size())
 	for sprite in layer_sprites:
 		sprite.queue_free()
 	layer_sprites.clear()
@@ -333,7 +512,7 @@ func load_layer_images(dir_path: String) -> void:
 		
 		var img = load_layer_image(img_path)
 		if img == null:
-			push_warning("Failed to load layer %d from %s" % [i, img_path])
+			push_error("[ParallaxViewer] Failed to load layer %d from %s" % [i, img_path])
 			continue
 		
 		var texture = ImageTexture.create_from_image(img)
@@ -346,10 +525,12 @@ func load_layer_images(dir_path: String) -> void:
 		viewport.add_child(sprite)
 		layer_sprites.append(sprite)
 		
-		print("  Layer %d: %dx%d, scroll=%.4f,%.4f, offset=(%d,%d)" % [
-			i, layer.width, layer.height,
-			layer.scroll_x / FIXED_POINT_SCALE,
-			layer.scroll_y / FIXED_POINT_SCALE,
+		var scroll_x = layer.scroll_x / FIXED_POINT_SCALE
+		var scroll_y = layer.scroll_y / FIXED_POINT_SCALE
+		var layer_type = "FG" if scroll_x >= 1.0 else ("BG" if scroll_x > 0 else "STATIC")
+		print("  [Layer %d] %dx%d %s scroll=(%.4f, %.4f) offset=(%d, %d)" % [
+			i, layer.width, layer.height, layer_type,
+			scroll_x, scroll_y,
 			layer.x_offset, layer.y_offset
 		])
 
