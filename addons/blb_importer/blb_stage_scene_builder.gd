@@ -100,7 +100,6 @@ func build_scene(stage_data: Dictionary, blb = null) -> PackedScene:
 	var tileset_result := _build_tileset_container(tile_pixels, palette_indices, tile_flags, palettes, total_tiles, count_16x16)
 	if tileset_result.container:
 		root.add_child(tileset_result.container)
-		tileset_result.container.owner = root
 	
 	# Add palette container
 	_add_palette_container(root, palettes)
@@ -121,6 +120,9 @@ func build_scene(stage_data: Dictionary, blb = null) -> PackedScene:
 	# Add spawn point marker
 	_add_spawn_point(root, tile_header)
 	
+	# Set owner recursively on all nodes (must be done after adding to tree)
+	_set_owner_recursive(root, root)
+	
 	# Pack and return scene
 	var packed := PackedScene.new()
 	var result := packed.pack(root)
@@ -133,6 +135,13 @@ func build_scene(stage_data: Dictionary, blb = null) -> PackedScene:
 	])
 	
 	return packed
+
+
+func _set_owner_recursive(node: Node, owner: Node) -> void:
+	"""Set owner on all children recursively"""
+	for child in node.get_children():
+		child.owner = owner
+		_set_owner_recursive(child, owner)
 
 
 func _add_background(root: Node2D, tile_header: Dictionary) -> void:
@@ -149,7 +158,6 @@ func _add_background(root: Node2D, tile_header: Dictionary) -> void:
 	)
 	bg.z_index = -100
 	root.add_child(bg)
-	bg.owner = root
 
 
 func _build_tileset_container(tile_pixels: PackedByteArray, palette_indices: PackedByteArray,
@@ -264,10 +272,8 @@ func _add_palette_container(root: Node2D, palettes: Array) -> void:
 		pal_node.color_count = palettes[i].size()
 		
 		container.add_child(pal_node)
-		pal_node.owner = root
 	
 	root.add_child(container)
-	container.owner = root
 
 
 func _add_layer_container(root: Node2D, layers: Array, tilemaps: Array, tileset: TileSet, count_16x16: int) -> void:
@@ -303,16 +309,16 @@ func _add_layer_container(root: Node2D, layers: Array, tilemaps: Array, tileset:
 		layer.position = Vector2(layer.x_offset, layer.y_offset)
 		layer.z_index = layer_idx - layers.size()
 		
-		# Fill tilemap
-		var tilemap_data: PackedByteArray = tilemaps[tilemap_idx]
+		# Fill tilemap (tilemaps is Array[PackedInt32Array] with u16 tile values)
+		var tilemap_data: PackedInt32Array = tilemaps[tilemap_idx]
 		var tile_count := 0
 		for y in range(layer.map_height):
 			for x in range(layer.map_width):
-				var idx: int = (y * layer.map_width + x) * 2
-				if idx + 2 > tilemap_data.size():
+				var idx: int = y * layer.map_width + x
+				if idx >= tilemap_data.size():
 					continue
 				
-				var tile_value: int = tilemap_data[idx] | (tilemap_data[idx + 1] << 8)
+				var tile_value: int = tilemap_data[idx]
 				var tile_index: int = tile_value & 0x7FF
 				
 				if tile_index > 0:  # 0 = empty
@@ -324,10 +330,8 @@ func _add_layer_container(root: Node2D, layers: Array, tilemaps: Array, tileset:
 		layer.tile_count = tile_count
 		
 		container.add_child(layer)
-		layer.owner = root
 	
 	root.add_child(container)
-	container.owner = root
 
 
 func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> void:
@@ -365,7 +369,6 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 		placeholder.size = Vector2(entity.x2 - entity.x1, entity.y2 - entity.y1)
 		placeholder.position = -placeholder.size / 2
 		entity.add_child(placeholder)
-		placeholder.owner = root
 		
 		# Add type label
 		var label := Label.new()
@@ -374,13 +377,10 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 		label.add_theme_font_size_override("font_size", 8)
 		label.position = Vector2(-12, -20)
 		entity.add_child(label)
-		label.owner = root
 		
 		container.add_child(entity)
-		entity.owner = root
 	
 	root.add_child(container)
-	container.owner = root
 
 
 func _add_sprite_container(root: Node2D, sprites: Array) -> void:
@@ -414,18 +414,17 @@ func _add_sprite_container(root: Node2D, sprites: Array) -> void:
 		sprite.animation_names = anim_names
 		sprite.total_frame_count = total_frames
 		
-		# Build SpriteFrames if we have the BLB reader
-		if _blb:
-			sprite.sprite_frames = _build_sprite_frames(sprite_data)
+		# Build SpriteFrames if we have the BLB reader (disabled for now - slow)
+		# TODO: Enable sprite frame building when performance is acceptable
+		#if _blb:
+		#	sprite.sprite_frames = _build_sprite_frames(sprite_data)
 		
 		# Position sprites in a grid for preview
 		sprite.position = Vector2((i % 10) * 64, (i / 10) * 64)
 		
 		container.add_child(sprite)
-		sprite.owner = root
 	
 	root.add_child(container)
-	container.owner = root
 
 
 func _build_sprite_frames(sprite_data: Dictionary) -> SpriteFrames:
@@ -465,7 +464,6 @@ func _add_tile_attributes(root: Node2D, tile_attributes: PackedByteArray) -> voi
 	attr_node.visible = false  # Hidden, just for inspection
 	
 	root.add_child(attr_node)
-	attr_node.owner = root
 
 
 func _add_spawn_point(root: Node2D, tile_header: Dictionary) -> void:
@@ -477,4 +475,3 @@ func _add_spawn_point(root: Node2D, tile_header: Dictionary) -> void:
 	)
 	spawn.gizmo_extents = 20.0
 	root.add_child(spawn)
-	spawn.owner = root
