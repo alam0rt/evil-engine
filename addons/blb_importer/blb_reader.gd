@@ -34,7 +34,9 @@ const ASSET_TILE_PIXELS := 300
 const ASSET_PALETTE_INDICES := 301
 const ASSET_TILE_FLAGS := 302
 const ASSET_PALETTE_CONTAINER := 400
+const ASSET_TILE_ATTRIBUTES := 500  # Collision/trigger map (1 byte per tile)
 const ASSET_ENTITIES := 501
+const ASSET_SPRITE_CONTAINER := 600  # Tertiary sprites (RLE encoded)
 
 # Internal state
 var _data: PackedByteArray
@@ -214,6 +216,11 @@ func load_stage(level_index: int, stage_index: int) -> Dictionary:
 	var entities_asset := find_asset(tertiary, ASSET_ENTITIES)
 	if not entities_asset.is_empty():
 		result["entities"] = _parse_entities(entities_asset.data)
+	
+	# Load tile attributes (collision map) from tertiary Asset 500
+	var tile_attrs := find_asset(tertiary, ASSET_TILE_ATTRIBUTES)
+	if not tile_attrs.is_empty():
+		result["tile_attributes"] = tile_attrs.data
 	
 	# Load sprites from tertiary Asset 600
 	var sprite_container := find_asset(tertiary, ASSET_SPRITE_CONTAINER)
@@ -423,8 +430,6 @@ func _psx_to_color(psx: int) -> Color:
 # -----------------------------------------------------------------------------
 # Sprite parsing (Tertiary Asset 600)
 # -----------------------------------------------------------------------------
-
-const ASSET_SPRITE_CONTAINER := 600
 
 
 func load_sprites(level_index: int, stage_index: int) -> Array[Dictionary]:

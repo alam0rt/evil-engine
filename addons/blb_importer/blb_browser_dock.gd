@@ -5,9 +5,18 @@ class_name BLBBrowserDock
 ##
 ## Shows a tree view of levels and stages. Double-click a stage to
 ## generate and open its scene.
+##
+## Scene structure mirrors BLB format:
+## - BLBStageRoot: Level/stage metadata
+##   - TilesetContainer: Tile assets (300, 301, 302, 400)
+##   - PaletteContainer: Color palettes (400)
+##   - LayerContainer: Parallax layers (200, 201)
+##   - EntityContainer: Entities (501)
+##   - SpriteContainer: Sprites/animations (600)
+##   - TileAttributes: Collision data (500)
 
 const BLBReader = preload("res://addons/blb_importer/blb_reader.gd")
-const StageSceneBuilder = preload("res://addons/blb_importer/stage_scene_builder.gd")
+const BLBStageSceneBuilder = preload("res://addons/blb_importer/blb_stage_scene_builder.gd")
 
 var _blb: BLBReader = null
 var _blb_path: String = ""
@@ -184,7 +193,7 @@ func _open_stage(level_idx: int, stage_idx: int, level_id: String) -> void:
 		return
 	
 	# Build scene (pass BLB reader for sprite decoding)
-	var builder := StageSceneBuilder.new()
+	var builder := BLBStageSceneBuilder.new()
 	var scene := builder.build_scene(stage_data, _blb)
 	
 	if not scene:

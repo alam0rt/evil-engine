@@ -61,6 +61,7 @@ func build_scene(stage_data: Dictionary, blb = null) -> PackedScene:
 	_add_tile_layers(root, layers, tilemaps, tileset, count_16x16)
 	
 	# Add entities with sprites
+	print("[StageSceneBuilder] Entities: %d, Sprites: %d, BLB: %s" % [entities.size(), sprites.size(), _blb != null])
 	_add_entities(root, entities, sprites)
 	
 	# Add spawn point marker
@@ -293,13 +294,6 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 	root.add_child(entities_container)
 	entities_container.owner = root
 	
-	# Build a sprite preview texture cache for quick assignment
-	var sprite_textures: Array[Texture2D] = []
-	if _blb != null:
-		for sprite in sprites:
-			var tex := SpriteFramesBuilder.get_sprite_preview_texture(_blb, sprite)
-			sprite_textures.append(tex)
-	
 	for i in range(entities.size()):
 		var entity: Dictionary = entities[i]
 		var entity_type: int = entity.get("entity_type", 0)
@@ -323,6 +317,10 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 			entity.get("y2", 0) - entity.get("y1", 0)
 		))
 		
+		# Add entity_node to tree first (before adding children that need owners)
+		entities_container.add_child(entity_node)
+		entity_node.owner = root
+		
 		# Try to assign a sprite - use entity_type as index into sprites array
 		# (This is a simplification; real game uses sprite ID lookup)
 		var sprite_idx := entity_type % sprites.size() if sprites.size() > 0 else -1
@@ -343,7 +341,7 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 				anim_sprite.play()
 			
 			entity_node.add_child(anim_sprite)
-			anim_sprite.owner = root
+			anim_sprite.owner = root  # Now this works because entity_node is in tree
 		else:
 			# Fallback: create a simple colored rect as placeholder
 			var placeholder := ColorRect.new()
@@ -364,9 +362,6 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 			label.position = Vector2(-8, -16)
 			entity_node.add_child(label)
 			label.owner = root
-		
-		entities_container.add_child(entity_node)
-		entity_node.owner = root
 
 
 func _add_spawn_point(root: Node2D, tile_header: Dictionary) -> void:
