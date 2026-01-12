@@ -399,13 +399,14 @@ func _parse_entities(data: PackedByteArray) -> Array[Dictionary]:
 		if offset + ENTITY_SIZE > data.size():
 			break
 		
+			# Bounding box and center use signed 16-bit (can extend above/left of screen)
 		entities.append({
-			"x1": _read_u16_from(data, offset + 0),
-			"y1": _read_u16_from(data, offset + 2),
-			"x2": _read_u16_from(data, offset + 4),
-			"y2": _read_u16_from(data, offset + 6),
-			"x_center": _read_u16_from(data, offset + 8),
-			"y_center": _read_u16_from(data, offset + 10),
+			"x1": _read_s16_from(data, offset + 0),
+			"y1": _read_s16_from(data, offset + 2),
+			"x2": _read_s16_from(data, offset + 4),
+			"y2": _read_s16_from(data, offset + 6),
+			"x_center": _read_s16_from(data, offset + 8),
+			"y_center": _read_s16_from(data, offset + 10),
 			"variant": _read_u16_from(data, offset + 12),
 			"padding1": _read_u16_from(data, offset + 14),
 			"padding2": _read_u16_from(data, offset + 16),
@@ -578,6 +579,12 @@ func _parse_sprite(data: PackedByteArray, sprite_id: int) -> Dictionary:
 				break
 			
 			var frame := _parse_frame_metadata(data, frame_offset, rle_data_offset)
+			
+			# Skip frames with invalid dimensions (matches Python validation)
+			# PSX sprites should be <= 512 pixels in either dimension
+			if frame.width <= 0 or frame.height <= 0 or frame.width > 512 or frame.height > 512:
+				continue
+			
 			frames.append(frame)
 		
 		anim["frames"] = frames
@@ -628,9 +635,9 @@ func decode_sprite_frame(sprite: Dictionary, anim_idx: int, frame_idx: int) -> I
 	if width == 0 or height == 0:
 		return null
 	
-	# Sanity check - PSX sprites shouldn't be larger than 1024x512 (VRAM limits)
-	if width > 1024 or height > 512:
-		push_warning("Sprite frame has suspicious dimensions: %dx%d" % [width, height])
+	# Sanity check - PSX sprites shouldn't be larger than 512x512
+	# Invalid dimensions indicate parsing error or alias animation entry
+	if width <= 0 or height <= 0 or width > 512 or height > 512:
 		return null
 	
 	var rle_base: int = sprite.rle_offset

@@ -37,7 +37,7 @@ const ENTITY_INFO: Dictionary = {
 		"short": "Clay",
 		"desc": "Collectible coin",
 		"color": Color(1.0, 0.8, 0.2),  # Gold
-		"sprite_id": 0x09406d8a,
+		"sprite_id": 0xb8700ca1,
 	},
 	EntityType.AMMO: {
 		"name": "Ammo",
