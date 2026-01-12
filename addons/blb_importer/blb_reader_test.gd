@@ -219,9 +219,16 @@ func test_gdextension_blb_archive() -> void:
 	else:
 		_pass("get_layer_count = %d" % layer_count)
 	
-	# NOTE: render_tile test skipped due to PackedByteArray creation bug
-	# TODO: Fix variant_new_packed_byte_array_from_data in api.c
-	_pass("render_tile SKIPPED (known bug)")
+	# Test render_tile
+	var tile_data: PackedByteArray = blb.render_tile(0)
+	if tile_data == null:
+		_fail("render_tile", "Returned null")
+	elif tile_data.size() == 0:
+		_fail("render_tile", "Returned empty array")
+	elif tile_data.size() != 1024:  # 16x16 * 4 bytes (RGBA)
+		_fail("render_tile", "Expected 1024 bytes, got %d" % tile_data.size())
+	else:
+		_pass("render_tile returns %d bytes" % tile_data.size())
 	
 	# Close
 	blb.close()

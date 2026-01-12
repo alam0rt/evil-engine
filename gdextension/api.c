@@ -75,6 +75,20 @@ void api_init(GDExtensionInterfaceGetProcAddress p_get_proc_address,
     api.print_warning = (GDExtensionInterfacePrintWarning)
         p_get_proc_address("print_warning");
     
+    /* Variant method calls */
+    api.variant_call = (GDExtensionInterfaceVariantCall)
+        p_get_proc_address("variant_call");
+    
+    /* Type construction */
+    api.variant_get_ptr_constructor = (GDExtensionInterfaceVariantGetPtrConstructor)
+        p_get_proc_address("variant_get_ptr_constructor");
+    api.variant_get_ptr_destructor = (GDExtensionInterfaceVariantGetPtrDestructor)
+        p_get_proc_address("variant_get_ptr_destructor");
+    
+    /* Packed array access */
+    api.packed_byte_array_operator_index = (GDExtensionInterfacePackedByteArrayOperatorIndex)
+        p_get_proc_address("packed_byte_array_operator_index");
+    
     /* Cache type constructors */
     if (api.get_variant_from_type_constructor) {
         type_to_variant.from_bool = api.get_variant_from_type_constructor(GDEXTENSION_VARIANT_TYPE_BOOL);
@@ -226,13 +240,43 @@ char* variant_as_cstring(const GdVariant* p_self) {
     return buffer;
 }
 
+/* PackedByteArray size (from Godot extension_api.json, 64-bit) */
+#define GD_PACKED_BYTE_ARRAY_SIZE 16
+
+/* Cached PackedByteArray constructors/destructors */
+static GDExtensionPtrConstructor packed_byte_array_constructor = NULL;
+static GDExtensionPtrDestructor packed_byte_array_destructor = NULL;
+
+static void ensure_packed_byte_array_funcs(void) {
+    if (!packed_byte_array_constructor && api.variant_get_ptr_constructor) {
+        packed_byte_array_constructor = api.variant_get_ptr_constructor(
+            GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY, 0);  /* default constructor */
+    }
+    if (!packed_byte_array_destructor && api.variant_get_ptr_destructor) {
+        packed_byte_array_destructor = api.variant_get_ptr_destructor(
+            GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY);
+    }
+}
+
 void variant_new_packed_byte_array(GdVariant* r_dest) {
-    if (type_to_variant.from_packed_byte_array) {
-        /* Create empty PackedByteArray */
-        uint8_t empty_array[16] = {0};  /* PackedByteArray is 16 bytes */
-        type_to_variant.from_packed_byte_array((GDExtensionUninitializedVariantPtr)r_dest, (GDExtensionConstTypePtr)empty_array);
-    } else {
+    ensure_packed_byte_array_funcs();
+    
+    if (!packed_byte_array_constructor || !type_to_variant.from_packed_byte_array) {
         variant_new_nil(r_dest);
+        return;
+    }
+    
+    /* Create empty PackedByteArray (native type) */
+    uint8_t pba[GD_PACKED_BYTE_ARRAY_SIZE] = {0};
+    packed_byte_array_constructor((GDExtensionUninitializedTypePtr)pba, NULL);
+    
+    /* Convert to Variant */
+    type_to_variant.from_packed_byte_array((GDExtensionUninitializedVariantPtr)r_dest, 
+                                            (GDExtensionConstTypePtr)pba);
+    
+    /* Destroy the temporary native type */
+    if (packed_byte_array_destructor) {
+        packed_byte_array_destructor((GDExtensionTypePtr)pba);
     }
 }
 
@@ -242,21 +286,86 @@ void variant_new_packed_byte_array_from_data(GdVariant* r_dest, const uint8_t* p
         return;
     }
     
-    /* Get PackedByteArray constructor from pointer */
-    GDExtensionPtrConstructor packed_constructor = (GDExtensionPtrConstructor)
-        api.get_variant_from_type_constructor(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY);
+    ensure_packed_byte_array_funcs();
     
-    if (!packed_constructor) {
+    if (!packed_byte_array_constructor || !type_to_variant.from_packed_byte_array ||
+        !api.variant_call || !api.packed_byte_array_operator_index) {
         variant_new_nil(r_dest);
         return;
     }
     
-    /* Create PackedByteArray from raw pointer and size */
-    /* PackedByteArray has a constructor that takes const uint8_t* and int64_t size */
-    struct {
-        const uint8_t* data;
-        int64_t size;
-    } args = { p_data, (int64_t)p_size };
+    /* Step 1: Create empty PackedByteArray native type */
+    uint8_t pba[GD_PACKED_BYTE_ARRAY_SIZE] = {0};
+    packed_byte_array_constructor((GDExtensionUninitializedTypePtr)pba, NULL);
     
-    packed_constructor((GDExtensionUninitializedVariantPtr)r_dest, (const GDExtensionConstTypePtr*)&args);
+    /* Step 2: Convert to Variant so we can call methods on it */
+    GdVariant array_variant;
+    type_to_variant.from_packed_byte_array((GDExtensionUninitializedVariantPtr)&array_variant, 
+                                            (GDExtensionConstTypePtr)pba);
+    
+    /* Destroy the temporary native type (Variant now owns a copy) */
+    if (packed_byte_array_destructor) {
+        packed_byte_array_destructor((GDExtensionTypePtr)pba);
+    }
+    
+    /* Step 3: Call resize(size) on the Variant */
+    GdStringName resize_name;
+    string_name_new(&resize_name, "resize");
+    
+    GdVariant size_arg;
+    variant_new_int(&size_arg, (int64_t)p_size);
+    
+    const GDExtensionConstVariantPtr args[1] = { (GDExtensionConstVariantPtr)&size_arg };
+    GdVariant ret;
+    GDExtensionCallError error = {0};
+    
+    api.variant_call((GDExtensionVariantPtr)&array_variant,
+                     (GDExtensionConstStringNamePtr)&resize_name,
+                     args, 1,
+                     (GDExtensionUninitializedVariantPtr)&ret,
+                     &error);
+    
+    string_name_destroy(&resize_name);
+    variant_destroy(&size_arg);
+    variant_destroy(&ret);
+    
+    if (error.error != GDEXTENSION_CALL_OK) {
+        variant_destroy(&array_variant);
+        variant_new_nil(r_dest);
+        return;
+    }
+    
+    /* Step 4: Get data pointer and copy bytes */
+    /* We need to get the internal PackedByteArray from the Variant to use operator_index */
+    /* Use type_from_variant to extract the native type */
+    uint8_t pba2[GD_PACKED_BYTE_ARRAY_SIZE] = {0};
+    if (type_from_variant.to_int) {  /* We use to_int as a check that type_from_variant is populated */
+        GDExtensionTypeFromVariantConstructorFunc to_packed = 
+            api.get_variant_to_type_constructor(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY);
+        if (to_packed) {
+            to_packed((GDExtensionUninitializedTypePtr)pba2, (GDExtensionVariantPtr)&array_variant);
+            
+            /* Now copy data using operator_index */
+            for (int i = 0; i < p_size; i++) {
+                uint8_t* ptr = api.packed_byte_array_operator_index((GDExtensionTypePtr)pba2, i);
+                if (ptr) {
+                    *ptr = p_data[i];
+                }
+            }
+            
+            /* Convert back to Variant (with copied data) */
+            type_to_variant.from_packed_byte_array((GDExtensionUninitializedVariantPtr)r_dest,
+                                                    (GDExtensionConstTypePtr)pba2);
+            
+            if (packed_byte_array_destructor) {
+                packed_byte_array_destructor((GDExtensionTypePtr)pba2);
+            }
+            variant_destroy(&array_variant);
+            return;
+        }
+    }
+    
+    /* Fallback: just return the resized (but empty) array */
+    api.variant_new_copy((GDExtensionUninitializedVariantPtr)r_dest, (GDExtensionConstVariantPtr)&array_variant);
+    variant_destroy(&array_variant);
 }

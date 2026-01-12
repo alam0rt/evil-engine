@@ -68,6 +68,16 @@ typedef struct {
     GDExtensionInterfacePrintError print_error;
     GDExtensionInterfacePrintWarning print_warning;
     
+    /* Variant method calls */
+    GDExtensionInterfaceVariantCall variant_call;
+    
+    /* Type construction */
+    GDExtensionInterfaceVariantGetPtrConstructor variant_get_ptr_constructor;
+    GDExtensionInterfaceVariantGetPtrDestructor variant_get_ptr_destructor;
+    
+    /* Packed array access */
+    GDExtensionInterfacePackedByteArrayOperatorIndex packed_byte_array_operator_index;
+    
     /* Library handle */
     GDExtensionClassLibraryPtr library;
     
