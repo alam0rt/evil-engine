@@ -104,8 +104,8 @@ var entity_container: Node2D
 var layer_container: Node2D
 var player_container: Node2D
 
-# BLB access - prefer C99 GDExtension over GDScript reader
-var blb_archive: BLBArchive = null  # C99 GDExtension (fast, for level lookup/tiles/layers)
+# BLB access - prefer EVIL GDExtension over GDScript reader
+var blb_archive: BLBArchive = null  # EVIL GDExtension (fast, for level lookup/tiles/layers)
 var blb_reader: Object = null       # GDScript fallback (for stage_data dict)
 
 # Frame counter
@@ -244,20 +244,20 @@ func _initialize_and_load_level() -> void:
 	
 	print("[GameRunner] InitializeAndLoadLevel...")
 	
-	# Convert res:// path to filesystem path for C99 library
+	# Convert res:// path to filesystem path for EVIL library
 	var fs_path = blb_path
 	if blb_path.begins_with("res://"):
 		fs_path = ProjectSettings.globalize_path(blb_path)
 	
-	# Open BLB with C99 GDExtension (keep as member for later use)
+	# Open BLB with EVIL GDExtension (keep as member for later use)
 	if blb_archive == null:
 		blb_archive = BLBArchive.new()
 	if not blb_archive.open(fs_path):
-		push_error("[GameRunner] Failed to open BLB with C99 library: %s" % fs_path)
+		push_error("[GameRunner] Failed to open BLB with EVIL library: %s" % fs_path)
 		return
 	print("[GameRunner] DEBUG: BLB opened, level_count=%d" % blb_archive.get_level_count())
 	
-	# Resolve level_id to level_index using C99 library
+	# Resolve level_id to level_index using EVIL library
 	print("[GameRunner] DEBUG: level_index=%d, level_id='%s'" % [level_index, level_id])
 	if level_index < 0 and level_id != "":
 		var found_idx = blb_archive.find_level_by_id(level_id)
@@ -290,9 +290,9 @@ func _initialize_and_load_level() -> void:
 		push_error("[GameRunner] Failed to load stage data")
 		return
 	
-	# Also load in C99 library for fast tile/layer access
+	# Also load in EVIL library for fast tile/layer access
 	if not blb_archive.load_level(level_index, stage_index):
-		push_warning("[GameRunner] C99 load_level failed, using GDScript fallback")
+		push_warning("[GameRunner] EVIL load_level failed, using GDScript fallback")
 	
 	# LoadTileDataToVRAM (0x80025240) - handled by BLBReader
 	print("[GameRunner] LoadTileDataToVRAM... (handled by importer)")
@@ -354,7 +354,7 @@ func _init_player_spawn_position(stage_data: Dictionary) -> void:
 func _load_bg_color(_stage_data: Dictionary) -> void:
 	## Mirrors LoadBGColorFromTileHeader
 	## Sets the viewport clear color (visible where no layers cover)
-	## Uses C99 GDExtension for fast access
+	## Uses EVIL GDExtension for fast access
 	
 	if blb_archive != null:
 		game_state.bg_color = blb_archive.get_background_color()
@@ -440,14 +440,14 @@ func _init_layers_and_tile_state(stage_data: Dictionary) -> void:
 		stage_root.remove_child(tile_layers)
 		layer_container.add_child(tile_layers)
 		
-		# Get layer count from C99 library if available
-		var c99_layer_count = 0
+		# Get layer count from EVIL library if available
+		var evil_layer_count = 0
 		if blb_archive != null:
-			c99_layer_count = blb_archive.get_layer_count()
+			evil_layer_count = blb_archive.get_layer_count()
 		
-		print("[GameRunner] C99 layer_count: %d, tile_layers children: %d" % [c99_layer_count, tile_layers.get_child_count()])
+		print("[GameRunner] EVIL layer_count: %d, tile_layers children: %d" % [evil_layer_count, tile_layers.get_child_count()])
 		
-		# Store layer metadata for parallax updates - prefer C99 GDExtension
+		# Store layer metadata for parallax updates - prefer EVIL GDExtension
 		for i in range(tile_layers.get_child_count()):
 			var layer_node = tile_layers.get_child(i)
 			
@@ -456,13 +456,13 @@ func _init_layers_and_tile_state(stage_data: Dictionary) -> void:
 			if layer_node.name.begins_with("Layer_"):
 				layer_idx = int(layer_node.name.substr(6))
 			
-			# Get scroll factors from C99 library
+			# Get scroll factors from EVIL library
 			var scroll_x := 65536
 			var scroll_y := 65536
-			if blb_archive != null and layer_idx < c99_layer_count:
-				var c99_layer_info = blb_archive.get_layer_info(layer_idx)
-				scroll_x = c99_layer_info.get("scroll_x", 65536)
-				scroll_y = c99_layer_info.get("scroll_y", 65536)
+			if blb_archive != null and layer_idx < evil_layer_count:
+				var evil_layer_info = blb_archive.get_layer_info(layer_idx)
+				scroll_x = evil_layer_info.get("scroll_x", 65536)
+				scroll_y = evil_layer_info.get("scroll_y", 65536)
 			
 			var layer_info = {
 				"index": layer_idx,

@@ -5,7 +5,7 @@ class_name BLBReader
 ## Reads BLB archive files directly without GDExtension.
 ## This is a reference implementation matching the C code in evil_engine.
 ##
-## NOTE: All parsing logic in this file has C99 equivalents in src/blb/blb.c
+## NOTE: All parsing logic in this file has EVIL equivalents in src/blb/blb.c
 ## and src/evil_engine.c. For production use, consider using the GDExtension
 ## BLBArchive class instead (when fully implemented).
 ##
@@ -140,7 +140,7 @@ func get_sector_data(sector_offset: int) -> PackedByteArray:
 func find_asset(segment_data: PackedByteArray, asset_id: int) -> Dictionary:
 	"""Find asset in segment by ID, returns {offset, size, data}
 	
-	C99 equivalent: BLB_FindAsset() in src/blb/blb.c
+	EVIL equivalent: BLB_FindAsset() in src/blb/blb.c
 	"""
 	if segment_data.size() < 4:
 		return {}
@@ -284,7 +284,7 @@ func _parse_tile_header(data: PackedByteArray) -> Dictionary:
 func _parse_palette_container(data: PackedByteArray) -> Array[PackedColorArray]:
 	"""Parse palette container (sub-TOC with 256-color CLUTs)
 	
-	C99 equivalent: BLB_ParsePaletteContainer() + BLB_GetPaletteFromContainer() in src/blb/blb.c
+	EVIL equivalent: BLB_ParsePaletteContainer() + BLB_GetPaletteFromContainer() in src/blb/blb.c
 	"""
 	var palettes: Array[PackedColorArray] = []
 	if data.size() < 4:
@@ -479,7 +479,7 @@ func _read_string(offset: int, max_len: int) -> String:
 func _psx_to_color(psx: int) -> Color:
 	"""Convert 15-bit PSX color (0BBBBBGGGGGRRRRR) to Color
 	
-	C99 equivalent: BLB_PSXColorToRGBA() in src/blb/blb.c
+	EVIL equivalent: BLB_PSXColorToRGBA() in src/blb/blb.c
 	"""
 	var r := (psx & 0x1F) << 3
 	var g := ((psx >> 5) & 0x1F) << 3
@@ -526,7 +526,7 @@ func load_primary_sprites(level_index: int) -> Array[Dictionary]:
 func _parse_sprite_container(data: PackedByteArray) -> Array[Dictionary]:
 	"""Parse sprite container (Asset 600 in tertiary)
 	
-	C99 equivalent: BLB_ParseSpriteContainer() + BLB_GetSpriteFromContainer() in src/blb/blb.c
+	EVIL equivalent: BLB_ParseSpriteContainer() + BLB_GetSpriteFromContainer() in src/blb/blb.c
 	"""
 	var sprites: Array[Dictionary] = []
 	if data.size() < 4:
@@ -560,7 +560,7 @@ func _parse_sprite_container(data: PackedByteArray) -> Array[Dictionary]:
 func _parse_sprite(data: PackedByteArray, sprite_id: int) -> Dictionary:
 	"""Parse individual sprite header and animations
 	
-	C99 equivalent: BLB_ParseSpriteHeader() + BLB_GetSpriteAnimation() in src/blb/blb.c
+	EVIL equivalent: BLB_ParseSpriteHeader() + BLB_GetSpriteAnimation() in src/blb/blb.c
 	"""
 	if data.size() < 12:
 		return {}
@@ -631,7 +631,7 @@ func _parse_sprite(data: PackedByteArray, sprite_id: int) -> Dictionary:
 func _parse_frame_metadata(data: PackedByteArray, offset: int, rle_base: int) -> Dictionary:
 	"""Parse 36-byte frame metadata
 	
-	C99 equivalent: BLB_GetSpriteFrameMetadata() in src/blb/blb.c
+	EVIL equivalent: BLB_GetSpriteFrameMetadata() in src/blb/blb.c
 	"""
 	return {
 		"callback_id": _read_u16_from(data, offset + 0),
@@ -737,15 +737,15 @@ func _read_s16_from(data: PackedByteArray, offset: int) -> int:
 
 
 # -----------------------------------------------------------------------------
-# Tile Size Helpers (matches C99 logic)
+# Tile Size Helpers (matches EVIL logic)
 # -----------------------------------------------------------------------------
 
 static func get_tile_is_8x8(tile_index: int, tile_header: Dictionary, tile_flags: PackedByteArray) -> bool:
 	"""Check if tile is 8x8 (vs 16x16)
 	
-	C99 equivalent: IsTile8x8() in src/render/render.h
+	EVIL equivalent: IsTile8x8() in src/render/render.h
 	
-	Matches C99 logic from GetTilePixelDataPtr and RenderTileToRGBA:
+	Matches EVIL logic from GetTilePixelDataPtr and RenderTileToRGBA:
 	  1. Check tile flags bit 1 if available (TILE_FLAG_8X8 = 0x02)
 	  2. Fall back to: tile_index >= count_16x16
 	

@@ -2,7 +2,7 @@
  * blb_archive.c - GDExtension BLBArchive Implementation
  * 
  * Implements the BLBArchive class exposed to GDScript.
- * This wraps the C99 evil_engine library for fast BLB parsing.
+ * This wraps the EVIL engine library for fast BLB parsing.
  * 
  * Primary use case: decode sprites in C instead of slow GDScript.
  */
