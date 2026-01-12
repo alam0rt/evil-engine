@@ -605,6 +605,11 @@ func decode_sprite_frame(sprite: Dictionary, anim_idx: int, frame_idx: int) -> I
 	if width == 0 or height == 0:
 		return null
 	
+	# Sanity check - PSX sprites shouldn't be larger than 1024x512 (VRAM limits)
+	if width > 1024 or height > 512:
+		push_warning("Sprite frame has suspicious dimensions: %dx%d" % [width, height])
+		return null
+	
 	var rle_base: int = sprite.rle_offset
 	var frame_rle_offset: int = frame.rle_offset
 	var data: PackedByteArray = sprite.raw_data

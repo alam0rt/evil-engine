@@ -35,18 +35,24 @@ const BLBSprite = preload("res://addons/blb_importer/nodes/blb_sprite.gd")
 const BLBPaletteContainer = preload("res://addons/blb_importer/nodes/blb_palette_container.gd")
 const BLBPalette = preload("res://addons/blb_importer/nodes/blb_palette.gd")
 const BLBTileAttributes = preload("res://addons/blb_importer/nodes/blb_tile_attributes.gd")
+const EntitySprites = preload("res://demo/entity_sprites.gd")
 
 var _blb = null  # BLBReader instance
+var _sprite_frames_by_id: Dictionary = {}  # Cache: sprite_id -> SpriteFrames resource path
+var _sprite_resource_dir := ""  # Directory to save sprite resources
 
 
-func build_scene(stage_data: Dictionary, blb = null) -> PackedScene:
+func build_scene(stage_data: Dictionary, blb = null, sprite_resource_dir := "") -> PackedScene:
 	"""Build complete scene from stage data dictionary
 	
 	Args:
 		stage_data: Dictionary from BLBReader.load_stage()
 		blb: BLBReader instance for sprite decoding
+		sprite_resource_dir: Directory to save SpriteFrames resources (e.g. "res://sprites/SCIE/")
+		                     If empty, sprites are embedded inline (slower, larger files)
 	"""
 	_blb = blb
+	_sprite_resource_dir = sprite_resource_dir
 	
 	var tile_header: Dictionary = stage_data.get("tile_header", {})
 	var tile_pixels: PackedByteArray = stage_data.get("tile_pixels", PackedByteArray())
@@ -119,11 +125,11 @@ func build_scene(stage_data: Dictionary, blb = null) -> PackedScene:
 	if tileset_result.tileset:
 		_add_layer_container(root, layers, tilemaps, tileset_result.tileset, count_16x16)
 	
-	# Add entity container
-	_add_entity_container(root, entities, sprites)
-	
-	# Add sprite container (separate from entities for browsing)
+	# Add sprite container FIRST (populates _sprite_frames_by_id cache)
 	_add_sprite_container(root, sprites)
+	
+	# Add entity container (uses sprite cache for entity→sprite mapping)
+	_add_entity_container(root, entities, sprites)
 	
 	# Add tile attributes
 	_add_tile_attributes(root, tile_attributes)
@@ -368,12 +374,26 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 	container.name = "EntityContainer"
 	container.entity_count = entities.size()
 	
+	# Build sprite lookup map by sprite_id
+	var sprite_by_id: Dictionary = {}
+	for sprite_data in sprites:
+		var sprite_id: int = sprite_data.get("id", 0)
+		if sprite_id != 0:
+			sprite_by_id[sprite_id] = sprite_data
+	
+	var matched_count := 0
+	
 	for i in range(entities.size()):
 		var entity_data: Dictionary = entities[i]
+		var entity_type: int = entity_data.get("entity_type", 0)
+		
+		# Get entity name from EntitySprites mapping
+		var entity_info: Dictionary = EntitySprites.get_info(entity_type)
+		var entity_name: String = entity_info.get("name", "Unknown")
 		
 		var entity := Node2D.new()
 		entity.set_script(BLBEntity)
-		entity.name = "Entity_%d_T%d" % [i, entity_data.get("entity_type", 0)]
+		entity.name = "%s_%d" % [entity_name, i]
 		
 		# Set entity properties - ALL EntityDef fields
 		entity.entity_index = i
@@ -386,31 +406,58 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 		entity.variant = entity_data.get("variant", 0)
 		entity.padding1 = entity_data.get("padding1", 0)
 		entity.padding2 = entity_data.get("padding2", 0)
-		entity.entity_type = entity_data.get("entity_type", 0)
+		entity.entity_type = entity_type
 		entity.layer = entity_data.get("layer", 0)
 		entity.padding3 = entity_data.get("padding3", 0)
 		
 		# Position at center
 		entity.position = Vector2(entity.x_center, entity.y_center)
 		
-		# Add visual placeholder for now
-		var placeholder := ColorRect.new()
-		placeholder.name = "Bounds"
-		placeholder.color = Color(1, 0.5, 0, 0.5)  # Orange semi-transparent
-		placeholder.size = Vector2(entity.x2 - entity.x1, entity.y2 - entity.y1)
-		placeholder.position = -placeholder.size / 2
-		entity.add_child(placeholder)
+		# Look up sprite by entity type → sprite ID mapping
+		var target_sprite_id = EntitySprites.get_sprite_id(entity_type)
+		var sprite_found := false
 		
-		# Add type label
-		var label := Label.new()
-		label.name = "TypeLabel"
-		label.text = "T%d" % entity.entity_type
-		label.add_theme_font_size_override("font_size", 8)
-		label.position = Vector2(-12, -20)
-		entity.add_child(label)
+		if target_sprite_id != null and target_sprite_id in sprite_by_id:
+			var sprite_data: Dictionary = sprite_by_id[target_sprite_id]
+			
+			# Check if we have cached SpriteFrames for this sprite
+			if target_sprite_id in _sprite_frames_by_id:
+				var sprite_path: String = _sprite_frames_by_id[target_sprite_id]
+				if ResourceLoader.exists(sprite_path):
+					var anim_sprite := AnimatedSprite2D.new()
+					anim_sprite.name = "Sprite"
+					anim_sprite.sprite_frames = load(sprite_path)
+					anim_sprite.centered = true
+					if anim_sprite.sprite_frames.get_animation_names().size() > 0:
+						anim_sprite.animation = anim_sprite.sprite_frames.get_animation_names()[0]
+					entity.add_child(anim_sprite)
+					entity.sprite_id = target_sprite_id
+					sprite_found = true
+					matched_count += 1
+		
+		# Fallback: add placeholder if no sprite found
+		if not sprite_found:
+			var placeholder := ColorRect.new()
+			placeholder.name = "Bounds"
+			# Use entity color from EntitySprites
+			var entity_color: Color = EntitySprites.get_color(entity_type)
+			entity_color.a = 0.5
+			placeholder.color = entity_color
+			placeholder.size = Vector2(entity.x2 - entity.x1, entity.y2 - entity.y1)
+			placeholder.position = -placeholder.size / 2
+			entity.add_child(placeholder)
+			
+			# Add type label
+			var label := Label.new()
+			label.name = "TypeLabel"
+			label.text = EntitySprites.get_short_name(entity_type)
+			label.add_theme_font_size_override("font_size", 8)
+			label.position = Vector2(-12, -20)
+			entity.add_child(label)
 		
 		container.add_child(entity)
 	
+	print("[BLBStageSceneBuilder] Entities: %d, sprite matches: %d" % [entities.size(), matched_count])
 	root.add_child(container)
 
 
@@ -420,6 +467,11 @@ func _add_sprite_container(root: Node2D, sprites: Array) -> void:
 	container.name = "SpriteContainer"
 	container.sprite_count = sprites.size()
 	container.visible = false  # Hidden by default, just for browsing
+	
+	# Create sprite resource directory if specified
+	if _sprite_resource_dir != "" and _blb:
+		var global_path := ProjectSettings.globalize_path(_sprite_resource_dir)
+		DirAccess.make_dir_recursive_absolute(global_path)
 	
 	for i in range(sprites.size()):
 		var sprite_data: Dictionary = sprites[i]
@@ -445,10 +497,31 @@ func _add_sprite_container(root: Node2D, sprites: Array) -> void:
 		sprite.animation_names = anim_names
 		sprite.total_frame_count = total_frames
 		
-		# Build SpriteFrames if we have the BLB reader (disabled for now - slow)
-		# TODO: Enable sprite frame building when performance is acceptable
-		#if _blb:
-		#	sprite.sprite_frames = _build_sprite_frames(sprite_data)
+		# Build SpriteFrames from BLB data
+		if _blb:
+			var frames := _build_sprite_frames(sprite_data, i)
+			if frames and frames.get_animation_names().size() > 0:
+				# Save as external resource if directory specified
+				if _sprite_resource_dir != "":
+					# Use binary .res format for smaller files
+					var res_path := "%ssprite_%d.res" % [_sprite_resource_dir, i]
+					var save_result := ResourceSaver.save(frames, res_path, ResourceSaver.FLAG_COMPRESS)
+					if save_result == OK:
+						# Load it back as external reference
+						sprite.sprite_frames = load(res_path)
+						# Cache path by sprite_id for entity lookup
+						var sprite_id_val: int = sprite_data.get("id", 0)
+						if sprite_id_val != 0:
+							_sprite_frames_by_id[sprite_id_val] = res_path
+					else:
+						push_warning("Failed to save sprite resource: %s" % res_path)
+						sprite.sprite_frames = frames
+				else:
+					sprite.sprite_frames = frames
+					# Cache inline frames by sprite_id
+					var sprite_id_val: int = sprite_data.get("id", 0)
+					if sprite_id_val != 0:
+						_sprite_frames_by_id[sprite_id_val] = ""  # Empty = inline
 		
 		# Position sprites in a grid for preview
 		sprite.position = Vector2((i % 10) * 64, (i / 10) * 64)
@@ -458,15 +531,18 @@ func _add_sprite_container(root: Node2D, sprites: Array) -> void:
 	root.add_child(container)
 
 
-func _build_sprite_frames(sprite_data: Dictionary) -> SpriteFrames:
-	"""Build SpriteFrames resource from sprite data"""
+func _build_sprite_frames(sprite_data: Dictionary, sprite_index: int) -> SpriteFrames:
+	"""Build SpriteFrames resource from sprite data, saving frames as PNG files"""
 	if not _blb:
 		return null
 	
+	var sprite_id: int = sprite_data.get("id", -1)
 	var frames := SpriteFrames.new()
 	frames.remove_animation("default")
 	
 	var animations: Array = sprite_data.get("animations", [])
+	var total_decoded := 0
+	
 	for anim_idx in range(animations.size()):
 		var anim: Dictionary = animations[anim_idx]
 		var anim_name := "anim_%d" % anim.get("id", anim_idx)
@@ -479,9 +555,22 @@ func _build_sprite_frames(sprite_data: Dictionary) -> SpriteFrames:
 		for frame_idx in range(frame_list.size()):
 			var image: Image = _blb.decode_sprite_frame(sprite_data, anim_idx, frame_idx)
 			if image:
-				var texture: ImageTexture = ImageTexture.create_from_image(image)
-				frames.add_frame(anim_name, texture)
+				# Save frame as PNG if we have a resource directory
+				if _sprite_resource_dir != "":
+					var png_name := "sprite_%d_anim%02d_f%02d.png" % [sprite_index, anim_idx, frame_idx]
+					var png_path := _sprite_resource_dir + png_name
+					var global_path := ProjectSettings.globalize_path(png_path)
+					image.save_png(global_path)
+					
+					# Load as external texture (will use Godot's import system)
+					var texture := ImageTexture.create_from_image(image)
+					frames.add_frame(anim_name, texture)
+				else:
+					var texture := ImageTexture.create_from_image(image)
+					frames.add_frame(anim_name, texture)
+				total_decoded += 1
 	
+	print("  Sprite %d: %d animations, %d frames decoded" % [sprite_index, animations.size(), total_decoded])
 	return frames
 
 

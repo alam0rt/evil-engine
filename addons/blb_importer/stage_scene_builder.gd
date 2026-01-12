@@ -12,6 +12,7 @@ const TILE_SIZE := 16
 const TILES_PER_ROW := 32  # Atlas layout
 
 const SpriteFramesBuilder = preload("res://addons/blb_importer/sprite_frames_builder.gd")
+const EntitySprites = preload("res://demo/entity_sprites.gd")
 
 var _blb = null  # BLBReader instance for sprite decoding
 
@@ -294,6 +295,15 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 	root.add_child(entities_container)
 	entities_container.owner = root
 	
+	# Build a sprite lookup map by sprite_id for entity→sprite matching
+	var sprite_by_id: Dictionary = {}
+	for sprite in sprites:
+		var sprite_id = sprite.get("id", 0)
+		if sprite_id != 0:
+			sprite_by_id[sprite_id] = sprite
+	
+	print("[StageSceneBuilder] Sprite ID lookup: %d sprites indexed" % sprite_by_id.size())
+	
 	for i in range(entities.size()):
 		var entity: Dictionary = entities[i]
 		var entity_type: int = entity.get("entity_type", 0)
@@ -317,16 +327,14 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 			entity.get("y2", 0) - entity.get("y1", 0)
 		))
 		
-		# Add entity_node to tree first (before adding children that need owners)
-		entities_container.add_child(entity_node)
-		entity_node.owner = root
+		# Look up sprite using EntitySprites mapping
+		var target_sprite_id = EntitySprites.get_sprite_id(entity_type)
+		var sprite: Dictionary = {}
 		
-		# Try to assign a sprite - use entity_type as index into sprites array
-		# (This is a simplification; real game uses sprite ID lookup)
-		var sprite_idx := entity_type % sprites.size() if sprites.size() > 0 else -1
+		if target_sprite_id != null and target_sprite_id in sprite_by_id:
+			sprite = sprite_by_id[target_sprite_id]
 		
-		if sprite_idx >= 0 and sprite_idx < sprites.size() and _blb != null:
-			var sprite: Dictionary = sprites[sprite_idx]
+		if not sprite.is_empty() and _blb != null:
 			
 			# Create AnimatedSprite2D with all animations
 			var anim_sprite := AnimatedSprite2D.new()
@@ -341,7 +349,7 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 				anim_sprite.play()
 			
 			entity_node.add_child(anim_sprite)
-			anim_sprite.owner = root  # Now this works because entity_node is in tree
+			anim_sprite.owner = root
 		else:
 			# Fallback: create a simple colored rect as placeholder
 			var placeholder := ColorRect.new()
@@ -362,6 +370,9 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 			label.position = Vector2(-8, -16)
 			entity_node.add_child(label)
 			label.owner = root
+		
+		entities_container.add_child(entity_node)
+		entity_node.owner = root
 
 
 func _add_spawn_point(root: Node2D, tile_header: Dictionary) -> void:

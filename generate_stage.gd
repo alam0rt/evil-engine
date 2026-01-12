@@ -44,9 +44,12 @@ func _init():
 	print("  Sprites: %d" % stage_data.get("sprites", []).size())
 	print("  Tile Attributes: %d bytes" % stage_data.get("tile_attributes", PackedByteArray()).size())
 	
-	# Build scene
+	# Build scene with external sprite resources
+	var sprites_dir = "res://sprites/%s/stage1/" % level_id
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(sprites_dir))
+	
 	var builder = BLBStageSceneBuilder.new()
-	var scene = builder.build_scene(stage_data, reader)
+	var scene = builder.build_scene(stage_data, reader, sprites_dir)
 	
 	if not scene:
 		print("ERROR: Failed to build scene")

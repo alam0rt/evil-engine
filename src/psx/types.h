@@ -119,4 +119,66 @@ typedef s32 fixed32;    /* 16.16 fixed point */
 /* PSX sector size */
 #define SECTOR_SIZE 2048
 
+/* -----------------------------------------------------------------------------
+ * PSX Color Conversion
+ * 
+ * PSX uses 15-bit BGR format: 0BBBBBGGGGGRRRRR (bit 15 = semi-transparent flag)
+ * Each component is 5 bits (0-31), mapping to 8-bit (0-248 with rounding).
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Convert PSX 15-bit color to 32-bit RGBA.
+ * @param psx_color  15-bit PSX color (0BBBBBGGGGGRRRRR)
+ * @return           32-bit RGBA (0xAABBGGRR in little-endian)
+ */
+static inline u32 psx_color_to_rgba(u16 psx_color)
+{
+    /* Extract 5-bit components */
+    u8 r5 = (psx_color >>  0) & 0x1F;
+    u8 g5 = (psx_color >>  5) & 0x1F;
+    u8 b5 = (psx_color >> 10) & 0x1F;
+    
+    /* Convert to 8-bit: shift left 3 and replicate top bits for rounding */
+    u8 r = (r5 << 3) | (r5 >> 2);
+    u8 g = (g5 << 3) | (g5 >> 2);
+    u8 b = (b5 << 3) | (b5 >> 2);
+    
+    /* Alpha is always 255 (opaque) for non-transparent pixels */
+    /* Caller handles transparency via color index 0 or semi-trans flag */
+    return (u32)r | ((u32)g << 8) | ((u32)b << 16) | (0xFF << 24);
+}
+
+/**
+ * Convert PSX 15-bit color to 32-bit RGBA with transparency.
+ * @param psx_color       15-bit PSX color
+ * @param is_transparent  1 if this pixel should be fully transparent
+ * @return                32-bit RGBA
+ */
+static inline u32 psx_color_to_rgba_alpha(u16 psx_color, int is_transparent)
+{
+    if (is_transparent) {
+        return 0x00000000;
+    }
+    return psx_color_to_rgba(psx_color);
+}
+
+/**
+ * Convert 32-bit RGBA to PSX 15-bit color.
+ * @param rgba  32-bit RGBA (0xAABBGGRR)
+ * @return      15-bit PSX color
+ */
+static inline u16 rgba_to_psx_color(u32 rgba)
+{
+    u8 r = (rgba >>  0) & 0xFF;
+    u8 g = (rgba >>  8) & 0xFF;
+    u8 b = (rgba >> 16) & 0xFF;
+    
+    /* Convert 8-bit to 5-bit */
+    u16 r5 = (r >> 3) & 0x1F;
+    u16 g5 = (g >> 3) & 0x1F;
+    u16 b5 = (b >> 3) & 0x1F;
+    
+    return r5 | (g5 << 5) | (b5 << 10);
+}
+
 #endif /* PSX_TYPES_H */

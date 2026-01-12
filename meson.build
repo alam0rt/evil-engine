@@ -20,6 +20,7 @@ lib_files = files(
   'src/blb/blb.c',
   'src/level/level.c',
   'src/render/render.c',
+  'src/render/sprite.c',
 )
 
 # Game logic (uses the library)
