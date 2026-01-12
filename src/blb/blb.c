@@ -143,6 +143,31 @@ const char* BLB_GetLevelID(const BLBFile* blb, u8 level_index) {
     return (const char*)(entry + LEVEL_OFF_LEVEL_ID);
 }
 
+s32 BLB_FindLevelByID(const BLBFile* blb, const char* level_id) {
+    if (!blb || !level_id) return -1;
+    
+    for (u8 i = 0; i < blb->level_count; i++) {
+        const char* id = BLB_GetLevelID(blb, i);
+        if (!id) continue;
+        
+        /* Case-insensitive 4-character comparison */
+        int match = 1;
+        for (int j = 0; j < 4 && level_id[j] && id[j]; j++) {
+            char a = level_id[j];
+            char b = id[j];
+            /* Convert to uppercase */
+            if (a >= 'a' && a <= 'z') a -= 32;
+            if (b >= 'a' && b <= 'z') b -= 32;
+            if (a != b) {
+                match = 0;
+                break;
+            }
+        }
+        if (match) return (s32)i;
+    }
+    return -1;
+}
+
 u8 BLB_GetLevelAssetIndex(const BLBFile* blb, u8 level_index) {
     const u8* entry = get_level_entry(blb, level_index);
     if (!entry) return 0;

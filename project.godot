@@ -13,6 +13,7 @@ config_version=5
 config/name="Evil Engine"
 config/description="Skullmonkeys reimplementation"
 config/version="0.0.0-KLOGG_IS_DEAD"
+run/main_scene="uid://djs0fpv8hs0yw"
 config/features=PackedStringArray("4.5")
 
 [editor_plugins]

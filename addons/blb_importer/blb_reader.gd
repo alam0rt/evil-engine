@@ -339,6 +339,7 @@ func _parse_layer_entries(data: PackedByteArray) -> Array[Dictionary]:
 			"level_width": _read_u16_from(data, offset + 8),
 			"level_height": _read_u16_from(data, offset + 10),
 			"render_param": _read_u32_from(data, offset + 0x0C),
+			# scroll_x/y are 16.16 fixed-point: 65536 = 1.0
 			"scroll_x": _read_u32_from(data, offset + 0x10),
 			"scroll_y": _read_u32_from(data, offset + 0x14),
 			"render_field_30": _read_u16_from(data, offset + 0x18),

@@ -274,27 +274,21 @@ func _add_tile_layers(root: Node2D, layers: Array, tilemaps: Array,
 				tile_layer.set_cell(Vector2i(x, y), 0, Vector2i(atlas_x, atlas_y))
 		
 		# Handle parallax
-		var scroll_x: float = layer.get("scroll_x", 1.0)
-		var scroll_y: float = layer.get("scroll_y", 1.0)
+		# scroll_x/y are 16.16 fixed-point: 65536 = 1.0, 0 = static (fixed to screen)
+		var scroll_x_raw: int = layer.get("scroll_x", 65536)
+		var scroll_y_raw: int = layer.get("scroll_y", 65536)
+		var scroll_x: float = float(scroll_x_raw) / 65536.0
+		var scroll_y: float = float(scroll_y_raw) / 65536.0
 		
-		if scroll_x < 1.0 or scroll_y < 1.0:
-			# Wrap in Parallax2D for parallax effect
-			var parallax := Parallax2D.new()
-			parallax.name = "Parallax_Layer_%d" % i
-			parallax.autoscroll = Vector2.ZERO
-			
-			# scroll_x/scroll_y are the parallax factors
-			# A value of 0.5 means the layer moves at half speed
-			parallax.scroll_scale = Vector2(scroll_x, scroll_y)
-			
-			parallax.add_child(tile_layer)
-			tile_layer.owner = root
-			
-			layers_container.add_child(parallax)
-			parallax.owner = root
-		else:
-			layers_container.add_child(tile_layer)
-			tile_layer.owner = root
+		# Store scroll values on layer for runtime access
+		tile_layer.set_meta("scroll_x", scroll_x_raw)
+		tile_layer.set_meta("scroll_y", scroll_y_raw)
+		tile_layer.set_meta("scroll_x_float", scroll_x)
+		tile_layer.set_meta("scroll_y_float", scroll_y)
+		
+		# Always add directly to container - let runtime handle parallax
+		layers_container.add_child(tile_layer)
+		tile_layer.owner = root
 
 
 func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:

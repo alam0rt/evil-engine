@@ -152,6 +152,13 @@ const char* BLB_GetLevelName(const BLBFile* blb, u8 level_index);
 const char* BLB_GetLevelID(const BLBFile* blb, u8 level_index);
 
 /**
+ * Find level index by 4-character ID code.
+ * Returns level index (0-25) or -1 if not found.
+ * ID comparison is case-insensitive.
+ */
+s32 BLB_FindLevelByID(const BLBFile* blb, const char* level_id);
+
+/**
  * Get level asset index.
  * Original: GetLevelAssetIndex (reads level[index] + 0x0C)
  */

@@ -318,6 +318,53 @@ static void blb_get_level_name_ptrcall(
 }
 
 /* -----------------------------------------------------------------------------
+ * Method: find_level_by_id(level_id: String) -> int
+ * Returns level index (0-25) or -1 if not found.
+ * -------------------------------------------------------------------------- */
+
+static void blb_find_level_by_id_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->is_open || p_argument_count < 1) {
+        variant_new_int((GdVariant*)r_return, -1);
+        return;
+    }
+    
+    char* level_id = variant_as_cstring((const GdVariant*)p_args[0]);
+    if (!level_id) {
+        variant_new_int((GdVariant*)r_return, -1);
+        return;
+    }
+    
+    s32 index = BLB_FindLevelByID(&data->blb, level_id);
+    api.mem_free(level_id);
+    
+    variant_new_int((GdVariant*)r_return, index);
+}
+
+static void blb_find_level_by_id_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    (void)p_args;
+    *(int64_t*)r_ret = -1;
+}
+
+/* -----------------------------------------------------------------------------
  * Method: get_stage_count(level_index: int) -> int
  * -------------------------------------------------------------------------- */
 
@@ -1024,6 +1071,13 @@ void register_blb_archive_class(GDExtensionClassLibraryPtr p_library) {
         blb_get_level_name_call, blb_get_level_name_ptrcall,
         GDEXTENSION_VARIANT_TYPE_STRING,
         "index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "find_level_by_id",
+        blb_find_level_by_id_call, blb_find_level_by_id_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT,
+        "level_id", GDEXTENSION_VARIANT_TYPE_STRING
     );
     
     bind_method_1_r(

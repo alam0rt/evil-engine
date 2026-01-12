@@ -28,8 +28,9 @@ const TILE_SIZE: int = 16
 
 # Exports
 @export_file("*.BLB") var blb_path: String = ""
-@export var level_index: int = 2  # SCIE
-@export var stage_index: int = 0
+@export var level_id: String = "CLOU"  # 4-letter level ID from BLB header
+@export var level_index: int = -1  # Auto-resolved from level_id, or override manually
+@export var stage_index: int = 1
 @export var scale_factor: int = 2
 
 # Game state (mirrors PSX GameState structure)
@@ -119,6 +120,9 @@ func _ready() -> void:
 	print("[GameRunner] Based on main() @ 0x800828b0")
 	print("")
 	
+	# Parse CLI arguments (--level NAME --stage N)
+	_parse_cli_arguments()
+	
 	# Initialize graphics (InitGraphicsSystem @ 0x80013268)
 	_init_graphics_system()
 	
@@ -128,6 +132,25 @@ func _ready() -> void:
 	# Load level (InitializeAndLoadLevel @ 0x8007d1d0)
 	if blb_path != "" or _find_default_blb():
 		_initialize_and_load_level()
+
+
+func _parse_cli_arguments() -> void:
+	## Parse command line arguments: --level NAME --stage N
+	var args = OS.get_cmdline_user_args()
+	print("[GameRunner] CLI args: %s" % [args])
+	var i := 0
+	while i < args.size():
+		var arg = args[i]
+		if arg == "--level" and i + 1 < args.size():
+			level_id = args[i + 1].to_upper()
+			print("[GameRunner] CLI: level_id=%s" % level_id)
+			i += 2
+		elif arg == "--stage" and i + 1 < args.size():
+			stage_index = int(args[i + 1])
+			print("[GameRunner] CLI: stage=%d" % stage_index)
+			i += 2
+		else:
+			i += 1
 
 
 func _find_default_blb() -> bool:
@@ -219,9 +242,33 @@ func _initialize_and_load_level() -> void:
 	## Main level loading sequence
 	
 	print("[GameRunner] InitializeAndLoadLevel...")
-	print("[GameRunner] Loading: %s (level %d, stage %d)" % [blb_path, level_index, stage_index])
 	
-	# Load BLB and stage data using BLBReader
+	# Convert res:// path to filesystem path for C99 library
+	var fs_path = blb_path
+	if blb_path.begins_with("res://"):
+		fs_path = ProjectSettings.globalize_path(blb_path)
+	
+	# Try to use BLBArchive (C99 GDExtension) for level lookup
+	var blb_archive = BLBArchive.new()
+	if not blb_archive.open(fs_path):
+		push_error("[GameRunner] Failed to open BLB with C99 library: %s" % fs_path)
+		return
+	
+	# Resolve level_id to level_index using C99 library
+	if level_index < 0 and level_id != "":
+		level_index = blb_archive.find_level_by_id(level_id)
+		if level_index < 0:
+			push_error("[GameRunner] Unknown level ID: %s" % level_id)
+			return
+	
+	# Get actual level ID and name from BLB header
+	var actual_level_id = blb_archive.get_level_id(level_index)
+	var actual_level_name = blb_archive.get_level_name(level_index)
+	print("[GameRunner] Loading: %s (%s) stage %d (index %d)" % [
+		actual_level_id, actual_level_name, stage_index, level_index
+	])
+	
+	# Load BLB and stage data using BLBReader (still needed for tiles/sprites)
 	var BLBReader = load("res://addons/blb_importer/blb_reader.gd")
 	if BLBReader == null:
 		push_error("[GameRunner] Failed to load BLBReader")
@@ -296,6 +343,7 @@ func _init_player_spawn_position(stage_data: Dictionary) -> void:
 
 func _load_bg_color(stage_data: Dictionary) -> void:
 	## Mirrors LoadBGColorFromTileHeader
+	## Sets the viewport clear color (visible where no layers cover)
 	
 	var tile_header = stage_data.get("tile_header", {})
 	var r = tile_header.get("bg_r", 0)
@@ -303,16 +351,11 @@ func _load_bg_color(stage_data: Dictionary) -> void:
 	var b = tile_header.get("bg_b", 0)
 	game_state.bg_color = Color8(r, g, b)
 	
-	# Set clear color
+	# Set clear color - this shows through where layers don't cover
 	RenderingServer.set_default_clear_color(game_state.bg_color)
 	
-	# Add background rect to viewport
-	var bg = ColorRect.new()
-	bg.color = game_state.bg_color
-	bg.size = Vector2(PSX_WIDTH, PSX_HEIGHT)
-	bg.z_index = -1000
-	viewport.add_child(bg)
-	viewport.move_child(bg, 0)
+	# Also set SubViewport's clear color
+	viewport.transparent_bg = false
 	
 	print("[GameRunner] BG Color: RGB(%d, %d, %d)" % [r, g, b])
 
@@ -381,11 +424,12 @@ func _init_layers_and_tile_state(stage_data: Dictionary) -> void:
 		
 		# Store layer metadata for parallax updates
 		var layer_defs = stage_data.get("layers", [])
+		print("[GameRunner] layer_defs count: %d, tile_layers children: %d" % [layer_defs.size(), tile_layers.get_child_count()])
 		for i in range(tile_layers.get_child_count()):
 			var layer_node = tile_layers.get_child(i)
 			
 			# Extract layer index from node name (e.g., "Layer_0")
-			var layer_idx = i
+			var layer_idx := i
 			if layer_node.name.begins_with("Layer_"):
 				layer_idx = int(layer_node.name.substr(6))
 			
@@ -399,14 +443,14 @@ func _init_layers_and_tile_state(stage_data: Dictionary) -> void:
 					"scroll_y": layer_def.get("scroll_y", 65536),
 				}
 				layers.append(layer_info)
+				print("[GameRunner] Layer %d: base_pos=%s, scroll=%d,%d (%.3f,%.3f)" % [
+					layer_idx, layer_info.base_position,
+					layer_info.scroll_x, layer_info.scroll_y,
+					float(layer_info.scroll_x) / 65536.0, float(layer_info.scroll_y) / 65536.0
+				])
 	
-	# Extract background
-	var bg = stage_root.get_node_or_null("Background")
-	if bg:
-		stage_root.remove_child(bg)
-		bg.z_index = -1000
-		layer_container.add_child(bg)
-		layer_container.move_child(bg, 0)
+	# Don't extract the Background ColorRect from StageSceneBuilder -
+	# we use the viewport clear color instead (set in _load_bg_color)
 	
 	# Clean up the temporary root
 	stage_root.queue_free()

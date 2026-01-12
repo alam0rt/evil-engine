@@ -2,6 +2,14 @@
 
 STAY TOONED
 
+## TODO
+
+- Pick better names for levels (should be Worlds).
+- Ensure C99 library has tests.
+- Start moving decompiled functions from executable into evil_engine C library.
+- Verify API of evil_engine is sane.
+- Get Klayman movin' and groovin.
+
 ## Development Setup
 
 ```bash
