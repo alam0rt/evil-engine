@@ -36,13 +36,17 @@ const BLBPaletteContainer = preload("res://addons/blb_importer/nodes/blb_palette
 const BLBPalette = preload("res://addons/blb_importer/nodes/blb_palette.gd")
 const BLBTileAttributes = preload("res://addons/blb_importer/nodes/blb_tile_attributes.gd")
 const EntitySprites = preload("res://demo/entity_sprites.gd")
+const BLBSpriteBankScript = preload("res://addons/blb_importer/resources/blb_sprite_bank.gd")
+const BLBLevelScript = preload("res://addons/blb_importer/resources/blb_level.gd")
 
 var _blb = null  # BLBReader instance
-var _sprite_frames_by_id: Dictionary = {}  # Cache: sprite_id -> SpriteFrames resource path
 var _sprite_resource_dir := ""  # Directory to save sprite resources
+var _blb_level: Resource = null  # BLBLevel resource for sprite lookups
+var _stage_index: int = 0  # Current stage index for sprite lookups
+var _current_stage_bank: Resource = null  # BLBSpriteBank for current stage
 
 
-func build_scene(stage_data: Dictionary, blb = null, sprite_resource_dir := "") -> PackedScene:
+func build_scene(stage_data: Dictionary, blb = null, sprite_resource_dir := "", blb_level: Resource = null) -> PackedScene:
 	"""Build complete scene from stage data dictionary
 	
 	Args:
@@ -50,9 +54,18 @@ func build_scene(stage_data: Dictionary, blb = null, sprite_resource_dir := "") 
 		blb: BLBReader instance for sprite decoding
 		sprite_resource_dir: Directory to save SpriteFrames resources (e.g. "res://sprites/SCIE/")
 		                     If empty, sprites are embedded inline (slower, larger files)
+		blb_level: Optional BLBLevel resource for game-accurate sprite lookups
 	"""
 	_blb = blb
 	_sprite_resource_dir = sprite_resource_dir
+	_blb_level = blb_level
+	_stage_index = stage_data.get("stage_index", 0)
+	
+	# Create stage sprite bank if we have a BLBLevel
+	if _blb_level:
+		_current_stage_bank = BLBSpriteBankScript.new()
+		_current_stage_bank.level_id = stage_data.get("level_id", "")
+		_current_stage_bank.segment = "stage%d" % _stage_index
 	
 	var tile_header: Dictionary = stage_data.get("tile_header", {})
 	var tile_pixels: PackedByteArray = stage_data.get("tile_pixels", PackedByteArray())
@@ -125,10 +138,14 @@ func build_scene(stage_data: Dictionary, blb = null, sprite_resource_dir := "") 
 	if tileset_result.tileset:
 		_add_layer_container(root, layers, tilemaps, tileset_result.tileset, count_16x16)
 	
-	# Add sprite container FIRST (populates _sprite_frames_by_id cache)
+	# Add sprite container (populates _current_stage_bank if BLBLevel provided)
 	_add_sprite_container(root, sprites)
 	
-	# Add entity container (uses sprite cache for entity→sprite mapping)
+	# Add stage bank to BLBLevel if provided
+	if _blb_level and _current_stage_bank:
+		_blb_level.add_stage_sprites(_stage_index, _current_stage_bank)
+	
+	# Add entity container (uses BLBLevel for game-accurate sprite lookup)
 	_add_entity_container(root, entities, sprites)
 	
 	# Add tile attributes
@@ -374,13 +391,6 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 	container.name = "EntityContainer"
 	container.entity_count = entities.size()
 	
-	# Build sprite lookup map by sprite_id
-	var sprite_by_id: Dictionary = {}
-	for sprite_data in sprites:
-		var sprite_id: int = sprite_data.get("id", 0)
-		if sprite_id != 0:
-			sprite_by_id[sprite_id] = sprite_data
-	
 	var matched_count := 0
 	
 	for i in range(entities.size()):
@@ -414,26 +424,31 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 		entity.position = Vector2(entity.x_center, entity.y_center)
 		
 		# Look up sprite by entity type → sprite ID mapping
+		# Game-accurate lookup: stage bank first, then primary fallback
 		var target_sprite_id = EntitySprites.get_sprite_id(entity_type)
 		var sprite_found := false
 		
-		if target_sprite_id != null and target_sprite_id in sprite_by_id:
-			var sprite_data: Dictionary = sprite_by_id[target_sprite_id]
+		if target_sprite_id != null:
+			var sprite_frames: SpriteFrames = null
 			
-			# Check if we have cached SpriteFrames for this sprite
-			if target_sprite_id in _sprite_frames_by_id:
-				var sprite_path: String = _sprite_frames_by_id[target_sprite_id]
-				if ResourceLoader.exists(sprite_path):
-					var anim_sprite := AnimatedSprite2D.new()
-					anim_sprite.name = "Sprite"
-					anim_sprite.sprite_frames = load(sprite_path)
-					anim_sprite.centered = true
-					if anim_sprite.sprite_frames.get_animation_names().size() > 0:
-						anim_sprite.animation = anim_sprite.sprite_frames.get_animation_names()[0]
-					entity.add_child(anim_sprite)
-					entity.sprite_id = target_sprite_id
-					sprite_found = true
-					matched_count += 1
+			# Use BLBLevel for game-accurate lookup (stage → primary)
+			if _blb_level:
+				sprite_frames = _blb_level.get_sprite_frames(target_sprite_id, _stage_index)
+			# Fallback: check stage bank directly (for cases without full BLBLevel)
+			elif _current_stage_bank:
+				sprite_frames = _current_stage_bank.get_sprite_frames(target_sprite_id)
+			
+			if sprite_frames:
+				var anim_sprite := AnimatedSprite2D.new()
+				anim_sprite.name = "Sprite"
+				anim_sprite.sprite_frames = sprite_frames
+				anim_sprite.centered = true
+				if sprite_frames.get_animation_names().size() > 0:
+					anim_sprite.animation = sprite_frames.get_animation_names()[0]
+				entity.add_child(anim_sprite)
+				entity.sprite_id = target_sprite_id
+				sprite_found = true
+				matched_count += 1
 		
 		# Fallback: add placeholder if no sprite found
 		if not sprite_found:
@@ -501,27 +516,30 @@ func _add_sprite_container(root: Node2D, sprites: Array) -> void:
 		if _blb:
 			var frames := _build_sprite_frames(sprite_data, i)
 			if frames and frames.get_animation_names().size() > 0:
+				var sprite_id_val: int = sprite_data.get("id", 0)
+				
 				# Save as external resource if directory specified
+				# Naming matches btm extraction: sprite_{ID}.res
 				if _sprite_resource_dir != "":
 					# Use binary .res format for smaller files
-					var res_path := "%ssprite_%d.res" % [_sprite_resource_dir, i]
+					var res_path := "%ssprite_%d.res" % [_sprite_resource_dir, sprite_id_val]
 					var save_result := ResourceSaver.save(frames, res_path, ResourceSaver.FLAG_COMPRESS)
 					if save_result == OK:
 						# Load it back as external reference
 						sprite.sprite_frames = load(res_path)
-						# Cache path by sprite_id for entity lookup
-						var sprite_id_val: int = sprite_data.get("id", 0)
-						if sprite_id_val != 0:
-							_sprite_frames_by_id[sprite_id_val] = res_path
+						# Add to stage bank for game-accurate lookups
+						if _current_stage_bank and sprite_id_val != 0:
+							_current_stage_bank.add_sprite(sprite_id_val, sprite.sprite_frames, res_path)
 					else:
 						push_warning("Failed to save sprite resource: %s" % res_path)
 						sprite.sprite_frames = frames
+						if _current_stage_bank and sprite_id_val != 0:
+							_current_stage_bank.add_sprite(sprite_id_val, frames)
 				else:
 					sprite.sprite_frames = frames
-					# Cache inline frames by sprite_id
-					var sprite_id_val: int = sprite_data.get("id", 0)
-					if sprite_id_val != 0:
-						_sprite_frames_by_id[sprite_id_val] = ""  # Empty = inline
+					# Add to stage bank for game-accurate lookups
+					if _current_stage_bank and sprite_id_val != 0:
+						_current_stage_bank.add_sprite(sprite_id_val, frames)
 		
 		# Position sprites in a grid for preview
 		sprite.position = Vector2((i % 10) * 64, (i / 10) * 64)
@@ -532,7 +550,10 @@ func _add_sprite_container(root: Node2D, sprites: Array) -> void:
 
 
 func _build_sprite_frames(sprite_data: Dictionary, sprite_index: int) -> SpriteFrames:
-	"""Build SpriteFrames resource from sprite data, saving frames as PNG files"""
+	"""Build SpriteFrames resource from sprite data, saving frames as PNG files
+	
+	PNG naming matches btm extraction format: sprite_{ID}_anim{NN}_f{NN}.png
+	"""
 	if not _blb:
 		return null
 	
@@ -556,8 +577,9 @@ func _build_sprite_frames(sprite_data: Dictionary, sprite_index: int) -> SpriteF
 			var image: Image = _blb.decode_sprite_frame(sprite_data, anim_idx, frame_idx)
 			if image:
 				# Save frame as PNG if we have a resource directory
+				# Naming matches btm extraction: sprite_{ID}_anim{NN}_f{NN}.png
 				if _sprite_resource_dir != "":
-					var png_name := "sprite_%d_anim%02d_f%02d.png" % [sprite_index, anim_idx, frame_idx]
+					var png_name := "sprite_%d_anim%02d_f%02d.png" % [sprite_id, anim_idx, frame_idx]
 					var png_path := _sprite_resource_dir + png_name
 					var global_path := ProjectSettings.globalize_path(png_path)
 					image.save_png(global_path)
@@ -570,7 +592,8 @@ func _build_sprite_frames(sprite_data: Dictionary, sprite_index: int) -> SpriteF
 					frames.add_frame(anim_name, texture)
 				total_decoded += 1
 	
-	print("  Sprite %d: %d animations, %d frames decoded" % [sprite_index, animations.size(), total_decoded])
+	# Suppress per-frame logging - use progress output instead
+	#print("  Sprite 0x%08x: %d animations, %d frames decoded" % [sprite_id, animations.size(), total_decoded])
 	return frames
 
 
@@ -595,3 +618,67 @@ func _add_spawn_point(root: Node2D, tile_header: Dictionary) -> void:
 	)
 	spawn.gizmo_extents = 20.0
 	root.add_child(spawn)
+
+
+func build_primary_sprite_bank(blb, level_id: String, level_index: int, resource_dir: String = "") -> Resource:
+	"""Build a BLBSpriteBank from primary segment Asset 600
+	
+	Primary sprites are shared across all stages in a level.
+	This should be called once per level, before building stage scenes.
+	
+	Args:
+		blb: BLBReader instance
+		level_id: Level identifier (e.g., "SCIE")
+		level_index: Level index in BLB (0-25)
+		resource_dir: Directory to save sprite resources (e.g., "res://sprites/SCIE/primary/")
+	
+	Returns:
+		BLBSpriteBank with all primary sprites
+	"""
+	_blb = blb
+	_sprite_resource_dir = resource_dir
+	
+	var bank: Resource = BLBSpriteBankScript.new()
+	bank.level_id = level_id
+	bank.segment = "primary"
+	
+	# Get primary sprites from BLB
+	var primary_sprites: Array = blb.load_primary_sprites(level_index)
+	if primary_sprites.is_empty():
+		print("[BLBStageSceneBuilder] No primary sprites for level %s" % level_id)
+		return bank
+	
+	# Create resource directory if specified
+	if resource_dir != "":
+		var global_path := ProjectSettings.globalize_path(resource_dir)
+		DirAccess.make_dir_recursive_absolute(global_path)
+	
+	print("[BLBStageSceneBuilder] Building primary sprite bank for %s: %d sprites" % [level_id, primary_sprites.size()])
+	
+	for i in range(primary_sprites.size()):
+		var sprite_data: Dictionary = primary_sprites[i]
+		var sprite_id: int = sprite_data.get("id", 0)
+		if sprite_id == 0:
+			continue
+		
+		# Progress output every 10 sprites
+		if i % 10 == 0:
+			print("  Processing primary sprite %d/%d..." % [i + 1, primary_sprites.size()])
+		
+		var frames := _build_sprite_frames(sprite_data, i)
+		if frames and frames.get_animation_names().size() > 0:
+			if resource_dir != "":
+				# Save as external resource
+				var res_path := "%ssprite_0x%08x.res" % [resource_dir, sprite_id]
+				var save_result := ResourceSaver.save(frames, res_path, ResourceSaver.FLAG_COMPRESS)
+				if save_result == OK:
+					var loaded_frames := load(res_path) as SpriteFrames
+					bank.add_sprite(sprite_id, loaded_frames, res_path)
+				else:
+					push_warning("Failed to save primary sprite: %s" % res_path)
+					bank.add_sprite(sprite_id, frames)
+			else:
+				bank.add_sprite(sprite_id, frames)
+	
+	print("[BLBStageSceneBuilder] Primary sprite bank complete: %d sprites" % bank.get_sprite_count())
+	return bank

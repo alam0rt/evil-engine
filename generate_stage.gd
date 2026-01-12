@@ -1,13 +1,14 @@
 #!/usr/bin/env -S godot4 --headless --script
 extends SceneTree
 
-## Test script to generate a BLB stage scene
+## Test script to generate a BLB stage scene with proper BLBLevel sprite hierarchy
 
 func _init():
 	print("=== BLB Stage Scene Generator ===")
 	
 	var BLBReader = load("res://addons/blb_importer/blb_reader.gd")
 	var BLBStageSceneBuilder = load("res://addons/blb_importer/blb_stage_scene_builder.gd")
+	var BLBLevel = load("res://addons/blb_importer/resources/blb_level.gd")
 	
 	var reader = BLBReader.new()
 	var blb_path = "/home/sam/projects/evil-engine/assets/GAME.BLB"
@@ -32,29 +33,57 @@ func _init():
 	
 	var level_id = reader.get_level_id(level_idx)
 	var level_name = reader.get_level_name(level_idx)
-	print("Loading: %s (%s)" % [level_name, level_id])
+	var stage_count = reader.get_stage_count(level_idx)
+	print("Loading: %s (%s) - %d stages" % [level_name, level_id, stage_count])
+	
+	# Create BLBLevel for game-accurate sprite lookups
+	var blb_level = BLBLevel.new()
+	blb_level.level_id = level_id
+	blb_level.level_name = level_name
+	blb_level.level_index = level_idx
+	blb_level.stage_count = stage_count
+	
+	# Directory structure mirrors btm/extracted/{LEVEL}/{segment}/sprites/
+	var extracted_base = "res://extracted/%s/" % level_id
+	var primary_sprites_dir = extracted_base + "primary/sprites/"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(primary_sprites_dir))
+	
+	var builder = BLBStageSceneBuilder.new()
+	var primary_bank = builder.build_primary_sprite_bank(reader, level_id, level_idx, primary_sprites_dir)
+	blb_level.primary_sprites = primary_bank
+	print("\nPrimary sprites: %d" % primary_bank.get_sprite_count())
 	
 	# Load stage data
-	var stage_data = reader.load_stage(level_idx, 0)
+	var stage_idx = 0
+	var stage_data = reader.load_stage(level_idx, stage_idx)
 	
 	print("\nStage Data:")
 	print("  Tile Header: %s" % str(stage_data.get("tile_header", {})))
 	print("  Layers: %d" % stage_data.get("layers", []).size())
 	print("  Entities: %d" % stage_data.get("entities", []).size())
-	print("  Sprites: %d" % stage_data.get("sprites", []).size())
+	print("  Sprites (tertiary): %d" % stage_data.get("sprites", []).size())
+	print("  Sprites (primary): %d" % stage_data.get("primary_sprites", []).size())
 	print("  Tile Attributes: %d bytes" % stage_data.get("tile_attributes", PackedByteArray()).size())
 	
-	# Build scene with external sprite resources
-	var sprites_dir = "res://sprites/%s/stage1/" % level_id
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(sprites_dir))
+	# Build scene with BLBLevel for game-accurate sprite lookups
+	# Directory structure: extracted/{LEVEL}/stage{N}/sprites/
+	var stage_sprites_dir = extracted_base + "stage%d/sprites/" % stage_idx
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(stage_sprites_dir))
 	
-	var builder = BLBStageSceneBuilder.new()
-	var scene = builder.build_scene(stage_data, reader, sprites_dir)
+	var scene = builder.build_scene(stage_data, reader, stage_sprites_dir, blb_level)
 	
 	if not scene:
 		print("ERROR: Failed to build scene")
 		quit(1)
 		return
+	
+	# Save BLBLevel resource
+	var level_res_path = extracted_base + "%s.tres" % level_id
+	ResourceSaver.save(blb_level, level_res_path)
+	print("\nBLBLevel saved: %s" % level_res_path)
+	print("  Primary sprites: %d" % blb_level.get_primary_sprite_count())
+	print("  Stage 0 sprites: %d" % blb_level.get_stage_sprite_count(0))
+	print("  Total for stage 0: %d" % blb_level.get_total_sprite_count(0))
 	
 	# Save scene
 	var scenes_dir = "res://scenes/blb_stages/"

@@ -222,10 +222,16 @@ func load_stage(level_index: int, stage_index: int) -> Dictionary:
 	if not tile_attrs.is_empty():
 		result["tile_attributes"] = tile_attrs.data
 	
-	# Load sprites from tertiary Asset 600
+	# Load sprites from tertiary Asset 600 (stage-specific)
 	var sprite_container := find_asset(tertiary, ASSET_SPRITE_CONTAINER)
 	if not sprite_container.is_empty():
 		result["sprites"] = _parse_sprite_container(sprite_container.data)
+	
+	# Load sprites from primary Asset 600 (level-wide shared)
+	# Game lookup order: tertiary first, then primary fallback (FindSpriteInTOC @ 0x8007b968)
+	var primary_sprite_container := find_asset(primary, ASSET_SPRITE_CONTAINER)
+	if not primary_sprite_container.is_empty():
+		result["primary_sprites"] = _parse_sprite_container(primary_sprite_container.data)
 	
 	return result
 
@@ -462,16 +468,33 @@ func _psx_to_color(psx: int) -> Color:
 
 
 # -----------------------------------------------------------------------------
-# Sprite parsing (Tertiary Asset 600)
+# Sprite parsing (Asset 600 - both Primary and Tertiary segments)
 # -----------------------------------------------------------------------------
 
 
 func load_sprites(level_index: int, stage_index: int) -> Array[Dictionary]:
-	"""Load sprites from tertiary Asset 600"""
+	"""Load sprites from tertiary Asset 600 (stage-specific)"""
 	var tertiary_sector := get_tertiary_sector(level_index, stage_index)
 	var tertiary := get_sector_data(tertiary_sector)
 	
 	var sprite_container := find_asset(tertiary, ASSET_SPRITE_CONTAINER)
+	if sprite_container.is_empty():
+		return []
+	
+	return _parse_sprite_container(sprite_container.data)
+
+
+func load_primary_sprites(level_index: int) -> Array[Dictionary]:
+	"""Load sprites from primary Asset 600 (level-wide shared)
+	
+	Primary sprites are shared across all stages in a level.
+	Game lookup order: tertiary (stage) first, then primary fallback.
+	See FindSpriteInTOC @ 0x8007b968.
+	"""
+	var primary_sector := get_primary_sector(level_index)
+	var primary := get_sector_data(primary_sector)
+	
+	var sprite_container := find_asset(primary, ASSET_SPRITE_CONTAINER)
 	if sprite_container.is_empty():
 		return []
 	

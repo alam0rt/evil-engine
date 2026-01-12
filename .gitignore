@@ -9,8 +9,15 @@ build/
 *.import
 
 # Game assets (copyrighted, do not commit)
+# Source BLB files
 assets/
-scenes/
+
+# Generated/extracted assets from BLB (copyrighted)
+# Structure mirrors btm/extracted/{LEVEL}/{segment}/
+extracted/
+
+# Generated scene files (contain copyrighted asset references)
+scenes/blb_stages/
 
 # Editor
 *.swp

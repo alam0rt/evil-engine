@@ -107,19 +107,50 @@ func _import(source_file: String, save_path: String, options: Dictionary,
 		push_error("[BLB Importer] Invalid stage index: ", stage_index)
 		return ERR_INVALID_PARAMETER
 	
+	# Get level info
+	var level_id: String = blb.get_level_id(level_index)
+	var level_name: String = blb.get_level_name(level_index)
+	
+	# Create BLBLevel resource for game-accurate sprite lookups
+	var blb_level := preload("res://addons/blb_importer/resources/blb_level.gd").new()
+	blb_level.level_id = level_id
+	blb_level.level_name = level_name
+	blb_level.level_index = level_index
+	blb_level.stage_count = blb.get_stage_count(level_index)
+	
+	# Build primary sprite bank (shared across all stages)
+	# Directory structure mirrors btm/extracted/{LEVEL}/{segment}/sprites/
+	var builder := BLBStageSceneBuilder.new()
+	var extracted_base_dir := "res://extracted/%s/" % level_id
+	var primary_sprite_dir := extracted_base_dir + "primary/sprites/"
+	
+	var primary_bank := builder.build_primary_sprite_bank(blb, level_id, level_index, primary_sprite_dir)
+	blb_level.primary_sprites = primary_bank
+	
+	print("[BLB Importer] Built primary sprite bank: %d sprites" % primary_bank.get_sprite_count())
+	
 	# Load stage data
 	var stage_data := blb.load_stage(level_index, stage_index)
 	if stage_data.is_empty():
 		push_error("[BLB Importer] Failed to load stage data")
 		return ERR_FILE_CORRUPT
 	
-	# Build scene
-	var builder := BLBStageSceneBuilder.new()
-	var packed_scene := builder.build_scene(stage_data, blb)
+	# Build scene with BLBLevel for game-accurate sprite lookups
+	var stage_sprite_dir := extracted_base_dir + "stage%d/sprites/" % stage_index
+	var packed_scene := builder.build_scene(stage_data, blb, stage_sprite_dir, blb_level)
 	
 	if not packed_scene:
 		push_error("[BLB Importer] Failed to build scene from BLB data")
 		return ERR_CANT_CREATE
+	
+	# Save BLBLevel resource
+	var level_res_path := extracted_base_dir + "%s.tres" % level_id
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(extracted_base_dir))
+	var level_save_result := ResourceSaver.save(blb_level, level_res_path)
+	if level_save_result == OK:
+		print("[BLB Importer] Saved BLBLevel: %s" % level_res_path)
+	else:
+		push_warning("[BLB Importer] Failed to save BLBLevel: %s" % level_res_path)
 	
 	# Save scene
 	var output_path := "%s.%s" % [save_path, _get_save_extension()]
@@ -130,7 +161,11 @@ func _import(source_file: String, save_path: String, options: Dictionary,
 		return result
 	
 	print("[BLB Importer] Successfully imported: %s (Level %d, Stage %d)" % [
-		blb.get_level_name(level_index), level_index, stage_index
+		level_name, level_index, stage_index
+	])
+	print("[BLB Importer] Primary sprites: %d, Stage sprites: %d" % [
+		blb_level.get_primary_sprite_count(),
+		blb_level.get_stage_sprite_count(stage_index)
 	])
 	
 	return OK

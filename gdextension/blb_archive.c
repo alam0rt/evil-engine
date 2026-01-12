@@ -144,14 +144,13 @@ static void blb_archive_get_tile_header(void* p_method_userdata, GDExtensionClas
                                         GDExtensionVariantPtr r_return,
                                         GDExtensionCallError* r_error) {
     GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    GDExtensionVariantPtr dict;
     (void)p_method_userdata;
     (void)p_args;
     (void)p_argument_count;
     (void)r_error;
     
-    /* Create empty dictionary for now */
-    variant_new_dictionary(&dict);
+    /* Create empty dictionary directly into return value */
+    gd_variant_new_dictionary(r_return);
     
     if (self && self->level) {
         const TileHeader* header = EvilEngine_GetTileHeader(self->level);
@@ -160,8 +159,6 @@ static void blb_archive_get_tile_header(void* p_method_userdata, GDExtensionClas
             /* This requires using dictionary_operator_index to set fields */
         }
     }
-    
-    *r_return = *dict;
 }
 
 /* Array get_layers() */
@@ -171,22 +168,19 @@ static void blb_archive_get_layers(void* p_method_userdata, GDExtensionClassInst
                                    GDExtensionVariantPtr r_return,
                                    GDExtensionCallError* r_error) {
     GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    GDExtensionVariantPtr array;
     (void)p_method_userdata;
     (void)p_args;
     (void)p_argument_count;
     (void)r_error;
     
-    /* Create empty array for now */
-    variant_new_array(&array);
+    /* Create empty array directly into return value */
+    gd_variant_new_array(r_return);
     
     if (self && self->level) {
         int layer_count = EvilEngine_GetLayerCount(self->level);
         /* TODO: Populate array with layer dictionaries */
         (void)layer_count;
     }
-    
-    *r_return = *array;
 }
 
 /* Array get_entities() */
@@ -196,14 +190,13 @@ static void blb_archive_get_entities(void* p_method_userdata, GDExtensionClassIn
                                      GDExtensionVariantPtr r_return,
                                      GDExtensionCallError* r_error) {
     GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    GDExtensionVariantPtr array;
     (void)p_method_userdata;
     (void)p_args;
     (void)p_argument_count;
     (void)r_error;
     
-    /* Create empty array for now */
-    variant_new_array(&array);
+    /* Create empty array directly into return value */
+    gd_variant_new_array(r_return);
     
     if (self && self->level) {
         int entity_count;
@@ -211,8 +204,6 @@ static void blb_archive_get_entities(void* p_method_userdata, GDExtensionClassIn
         /* TODO: Populate array with entity dictionaries */
         (void)entities;
     }
-    
-    *r_return = *array;
 }
 
 /* PackedInt32Array get_layer_tilemap(int layer_index) */
@@ -222,20 +213,17 @@ static void blb_archive_get_layer_tilemap(void* p_method_userdata, GDExtensionCl
                                           GDExtensionVariantPtr r_return,
                                           GDExtensionCallError* r_error) {
     GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    GDExtensionVariantPtr packed_array;
     (void)p_method_userdata;
     (void)p_args;
     (void)p_argument_count;
     (void)r_error;
     
-    /* Create empty packed array for now */
-    variant_new_packed_int32_array(&packed_array);
+    /* Create empty packed array directly into return value */
+    gd_variant_new_packed_int32_array(r_return);
     
     if (self && self->level) {
         /* TODO: Get tilemap and convert to PackedInt32Array */
     }
-    
-    *r_return = *packed_array;
 }
 
 /* PackedByteArray get_tile_pixels(int tile_index) */
@@ -244,17 +232,14 @@ static void blb_archive_get_tile_pixels(void* p_method_userdata, GDExtensionClas
                                         GDExtensionInt p_argument_count,
                                         GDExtensionVariantPtr r_return,
                                         GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    GDExtensionVariantPtr packed_array;
     (void)p_method_userdata;
+    (void)p_instance;
     (void)p_args;
     (void)p_argument_count;
     (void)r_error;
-    (void)self;
     
-    /* Create empty packed array for now */
-    variant_new_packed_byte_array(&packed_array);
-    *r_return = *packed_array;
+    /* Create empty packed array directly into return value */
+    gd_variant_new_packed_byte_array(r_return);
 }
 
 /* PackedColorArray get_palette(int palette_index) */
@@ -263,17 +248,14 @@ static void blb_archive_get_palette(void* p_method_userdata, GDExtensionClassIns
                                     GDExtensionInt p_argument_count,
                                     GDExtensionVariantPtr r_return,
                                     GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    GDExtensionVariantPtr packed_array;
     (void)p_method_userdata;
+    (void)p_instance;
     (void)p_args;
     (void)p_argument_count;
     (void)r_error;
-    (void)self;
     
-    /* Create empty packed array for now */
-    variant_new_packed_color_array(&packed_array);
-    *r_return = *packed_array;
+    /* Create empty packed array directly into return value */
+    gd_variant_new_packed_color_array(r_return);
 }
 
 /* -----------------------------------------------------------------------------
