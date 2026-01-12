@@ -449,6 +449,107 @@ static void blb_get_tertiary_sector_ptrcall(
 }
 
 /* -----------------------------------------------------------------------------
+ * Method: get_asset_data(level_index: int, stage_index: int, segment_type: int, asset_id: int) -> PackedByteArray
+ * Get raw asset data from a segment.
+ * segment_type: 0=primary, 1=secondary, 2=tertiary
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_asset_data_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->is_open || p_argument_count < 4) {
+        variant_new_packed_byte_array((GdVariant*)r_return);
+        return;
+    }
+    
+    int64_t level_index = variant_as_int((const GdVariant*)p_args[0]);
+    int64_t stage_index = variant_as_int((const GdVariant*)p_args[1]);
+    int64_t segment_type = variant_as_int((const GdVariant*)p_args[2]);
+    int64_t asset_id = variant_as_int((const GdVariant*)p_args[3]);
+    
+    int size = 0;
+    const u8* asset_data = EvilEngine_GetAssetData(
+        &data->blb, (int)level_index, (int)stage_index,
+        (int)segment_type, (unsigned int)asset_id, &size
+    );
+    
+    if (asset_data && size > 0) {
+        variant_new_packed_byte_array_from_data((GdVariant*)r_return, asset_data, size);
+    } else {
+        variant_new_packed_byte_array((GdVariant*)r_return);
+    }
+}
+
+static void blb_get_asset_data_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    (void)p_args;
+    (void)r_ret;
+    /* ptrcall not implemented - return empty */
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: psx_color_to_rgba(psx_color: int) -> int
+ * Convert PSX 15-bit color to RGBA.
+ * -------------------------------------------------------------------------- */
+
+static void blb_psx_color_to_rgba_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    (void)r_error;
+    
+    if (p_argument_count < 1) {
+        variant_new_int((GdVariant*)r_return, 0);
+        return;
+    }
+    
+    int64_t psx_color = variant_as_int((const GdVariant*)p_args[0]);
+    u32 rgba = EvilEngine_PSXColorToRGBA((u16)psx_color);
+    
+    variant_new_int((GdVariant*)r_return, (int64_t)rgba);
+}
+
+static void blb_psx_color_to_rgba_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    
+    if (p_args) {
+        int64_t psx_color = *(const int64_t*)p_args[0];
+        u32 rgba = EvilEngine_PSXColorToRGBA((u16)psx_color);
+        *(int64_t*)r_ret = (int64_t)rgba;
+    } else {
+        *(int64_t*)r_ret = 0;
+    }
+}
+
+/* -----------------------------------------------------------------------------
  * Class Registration
  * -------------------------------------------------------------------------- */
 
@@ -511,6 +612,23 @@ void register_blb_archive_class(GDExtensionClassLibraryPtr p_library) {
         GDEXTENSION_VARIANT_TYPE_INT,
         "level_index", GDEXTENSION_VARIANT_TYPE_INT,
         "stage_index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_4_r(
+        CLASS_NAME, "get_asset_data",
+        blb_get_asset_data_call, blb_get_asset_data_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY,
+        "level_index", GDEXTENSION_VARIANT_TYPE_INT,
+        "stage_index", GDEXTENSION_VARIANT_TYPE_INT,
+        "segment_type", GDEXTENSION_VARIANT_TYPE_INT,
+        "asset_id", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "psx_color_to_rgba",
+        blb_psx_color_to_rgba_call, blb_psx_color_to_rgba_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT,
+        "psx_color", GDEXTENSION_VARIANT_TYPE_INT
     );
 }
 

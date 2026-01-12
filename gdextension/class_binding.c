@@ -369,3 +369,113 @@ void bind_method_2_r(
     string_name_destroy(&arg1_sn);
     string_name_destroy(&arg2_sn);
 }
+
+/* -----------------------------------------------------------------------------
+ * Method Binding - 4 args, with return
+ * -------------------------------------------------------------------------- */
+
+void bind_method_4_r(
+    const char* class_name,
+    const char* method_name,
+    GDExtensionClassMethodCall call_func,
+    GDExtensionClassMethodPtrCall ptrcall_func,
+    GDExtensionVariantType return_type,
+    const char* arg1_name,
+    GDExtensionVariantType arg1_type,
+    const char* arg2_name,
+    GDExtensionVariantType arg2_type,
+    const char* arg3_name,
+    GDExtensionVariantType arg3_type,
+    const char* arg4_name,
+    GDExtensionVariantType arg4_type
+) {
+    ensure_empty_strings();
+    
+    GdStringName class_sn, method_sn, arg1_sn, arg2_sn, arg3_sn, arg4_sn;
+    string_name_new(&class_sn, class_name);
+    string_name_new(&method_sn, method_name);
+    string_name_new(&arg1_sn, arg1_name);
+    string_name_new(&arg2_sn, arg2_name);
+    string_name_new(&arg3_sn, arg3_name);
+    string_name_new(&arg4_sn, arg4_name);
+    
+    GDExtensionPropertyInfo return_info = {
+        .type = return_type,
+        .name = (GDExtensionStringNamePtr)&s_empty_sn,
+        .class_name = (GDExtensionStringNamePtr)&s_empty_sn,
+        .hint = 0,
+        .hint_string = (GDExtensionStringPtr)&s_empty_str,
+        .usage = 6
+    };
+    
+    GDExtensionPropertyInfo arg_infos[4] = {
+        {
+            .type = arg1_type,
+            .name = (GDExtensionStringNamePtr)&arg1_sn,
+            .class_name = (GDExtensionStringNamePtr)&s_empty_sn,
+            .hint = 0,
+            .hint_string = (GDExtensionStringPtr)&s_empty_str,
+            .usage = 6
+        },
+        {
+            .type = arg2_type,
+            .name = (GDExtensionStringNamePtr)&arg2_sn,
+            .class_name = (GDExtensionStringNamePtr)&s_empty_sn,
+            .hint = 0,
+            .hint_string = (GDExtensionStringPtr)&s_empty_str,
+            .usage = 6
+        },
+        {
+            .type = arg3_type,
+            .name = (GDExtensionStringNamePtr)&arg3_sn,
+            .class_name = (GDExtensionStringNamePtr)&s_empty_sn,
+            .hint = 0,
+            .hint_string = (GDExtensionStringPtr)&s_empty_str,
+            .usage = 6
+        },
+        {
+            .type = arg4_type,
+            .name = (GDExtensionStringNamePtr)&arg4_sn,
+            .class_name = (GDExtensionStringNamePtr)&s_empty_sn,
+            .hint = 0,
+            .hint_string = (GDExtensionStringPtr)&s_empty_str,
+            .usage = 6
+        }
+    };
+    
+    GDExtensionClassMethodArgumentMetadata arg_metas[4] = {
+        GDEXTENSION_METHOD_ARGUMENT_METADATA_NONE,
+        GDEXTENSION_METHOD_ARGUMENT_METADATA_NONE,
+        GDEXTENSION_METHOD_ARGUMENT_METADATA_NONE,
+        GDEXTENSION_METHOD_ARGUMENT_METADATA_NONE
+    };
+    
+    GDExtensionClassMethodInfo method_info = {
+        .name = (GDExtensionStringNamePtr)&method_sn,
+        .method_userdata = NULL,
+        .call_func = call_func,
+        .ptrcall_func = ptrcall_func,
+        .method_flags = GDEXTENSION_METHOD_FLAG_NORMAL,
+        .has_return_value = 1,
+        .return_value_info = &return_info,
+        .return_value_metadata = GDEXTENSION_METHOD_ARGUMENT_METADATA_NONE,
+        .argument_count = 4,
+        .arguments_info = arg_infos,
+        .arguments_metadata = arg_metas,
+        .default_argument_count = 0,
+        .default_arguments = NULL
+    };
+    
+    api.classdb_register_extension_class_method(
+        api.library,
+        (GDExtensionConstStringNamePtr)&class_sn,
+        &method_info
+    );
+    
+    string_name_destroy(&class_sn);
+    string_name_destroy(&method_sn);
+    string_name_destroy(&arg1_sn);
+    string_name_destroy(&arg2_sn);
+    string_name_destroy(&arg3_sn);
+    string_name_destroy(&arg4_sn);
+}

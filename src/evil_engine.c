@@ -143,6 +143,124 @@ int EvilEngine_GetTotalTiles(const LevelContext* level) {
     return (int)Level_GetTotalTileCount(level);
 }
 
+int EvilEngine_GetTileFlags(const LevelContext* level, int tile_index) {
+    if (!level) return 0;
+    return (int)Level_GetTileFlags(level, (u16)tile_index);
+}
+
+/* -----------------------------------------------------------------------------
+ * Palette Operations
+ * -------------------------------------------------------------------------- */
+
+int EvilEngine_GetPaletteCount(const LevelContext* level) {
+    if (!level || !level->palette_container) return 0;
+    
+    u32 count = 0;
+    BLB_ParsePaletteContainer(level->palette_container, &count);
+    return (int)count;
+}
+
+const u16* EvilEngine_GetPalette(const LevelContext* level, int palette_index, int* out_size) {
+    u32 size = 0;
+    const u16* palette;
+    
+    if (!level || !level->palette_container) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    palette = BLB_GetPaletteFromContainer(level->palette_container, (u8)palette_index, &size);
+    if (out_size) *out_size = (int)size;
+    
+    return palette;
+}
+
+unsigned int EvilEngine_PSXColorToRGBA(unsigned short psx_color) {
+    return BLB_PSXColorToRGBA(psx_color);
+}
+
+/* -----------------------------------------------------------------------------
+ * Sprite Operations
+ * -------------------------------------------------------------------------- */
+
+int EvilEngine_GetSpriteCount(const unsigned char* segment_data, int* out_count) {
+    u32 count = 0;
+    int result = BLB_ParseSpriteContainer(segment_data, &count);
+    if (out_count) *out_count = (int)count;
+    return result;
+}
+
+const unsigned char* EvilEngine_GetSprite(const unsigned char* segment_data, int sprite_index,
+                                          unsigned int* out_sprite_id, int* out_size) {
+    u32 sprite_id = 0, size = 0;
+    const u8* sprite = BLB_GetSpriteFromContainer(segment_data, (u32)sprite_index, &sprite_id, &size);
+    
+    if (out_sprite_id) *out_sprite_id = sprite_id;
+    if (out_size) *out_size = (int)size;
+    
+    return sprite;
+}
+
+int EvilEngine_ParseSpriteHeader(const unsigned char* sprite_data, void* out_header) {
+    return BLB_ParseSpriteHeader(sprite_data, (SpriteHeader*)out_header);
+}
+
+int EvilEngine_GetSpriteAnimation(const unsigned char* sprite_data, int anim_index, void* out_anim) {
+    return BLB_GetSpriteAnimation(sprite_data, (u32)anim_index, (SpriteAnim*)out_anim);
+}
+
+int EvilEngine_GetSpriteFrameMetadata(const unsigned char* sprite_data, int frame_meta_offset,
+                                      int frame_index, void* out_frame) {
+    return BLB_GetSpriteFrameMetadata(sprite_data, (u16)frame_meta_offset, (u32)frame_index, (SpriteFrame*)out_frame);
+}
+
+const unsigned short* EvilEngine_GetSpritePalette(const unsigned char* sprite_data, unsigned int palette_offset) {
+    return BLB_GetSpritePalette(sprite_data, palette_offset);
+}
+
+/* -----------------------------------------------------------------------------
+ * Raw Asset Access
+ * -------------------------------------------------------------------------- */
+
+const unsigned char* EvilEngine_GetAssetData(const BLBFile* blb, int level_index, int stage_index,
+                                             int segment_type, unsigned int asset_id, int* out_size) {
+    u16 sector_offset;
+    const u8* segment_data;
+    const u8* asset_data;
+    u32 size = 0;
+    
+    if (!blb) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Get appropriate segment sector */
+    if (segment_type == 0) {
+        /* Primary */
+        sector_offset = BLB_GetPrimarySectorOffset(blb, (u8)level_index);
+    } else if (segment_type == 1) {
+        /* Secondary */
+        sector_offset = BLB_GetSecondarySectorOffset(blb, (u8)level_index, (u8)stage_index);
+    } else if (segment_type == 2) {
+        /* Tertiary */
+        sector_offset = BLB_GetTertiarySectorOffset(blb, (u8)level_index, (u8)stage_index);
+    } else {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    segment_data = BLB_GetSectorData(blb, sector_offset);
+    if (!segment_data) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    asset_data = BLB_FindAsset(blb, segment_data, asset_id, &size);
+    if (out_size) *out_size = (int)size;
+    
+    return asset_data;
+}
+
 /* -----------------------------------------------------------------------------
  * BLB File Operations (WRITE)
  * TODO: Implement in Phase 2

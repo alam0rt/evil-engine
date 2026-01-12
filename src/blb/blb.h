@@ -223,6 +223,146 @@ const TOCEntry* BLB_GetSegmentTOC(const BLBFile* blb, u16 sector_offset, u32* ou
 const u8* BLB_FindAsset(const BLBFile* blb, const u8* segment_start, 
                         u32 asset_id, u32* out_size);
 
+/* -----------------------------------------------------------------------------
+ * Palette Parsing
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Parse palette container (Asset 400) and get palette count.
+ * Palette container has a sub-TOC with 256-color palettes.
+ * 
+ * @param palette_data      Pointer to palette container asset data
+ * @param out_count         Output: number of palettes
+ * @return                  0 on success, -1 on error
+ */
+int BLB_ParsePaletteContainer(const u8* palette_data, u32* out_count);
+
+/**
+ * Get a specific palette from container.
+ * 
+ * @param palette_data      Pointer to palette container asset data
+ * @param palette_index     Palette index (0-based)
+ * @param out_size          Output: palette size in bytes (typically 512 = 256 colors × 2 bytes)
+ * @return                  Pointer to palette data (PSX 15-bit RGB), or NULL if invalid
+ */
+const u16* BLB_GetPaletteFromContainer(const u8* palette_data, u8 palette_index, u32* out_size);
+
+/**
+ * Convert PSX 15-bit color to RGBA (0xARGB format).
+ * PSX format: 0BBBBBGGGGGRRRRR (5 bits per channel)
+ * 
+ * @param psx_color         PSX 15-bit color value
+ * @return                  32-bit RGBA color (0xAABBGGRR)
+ */
+u32 BLB_PSXColorToRGBA(u16 psx_color);
+
+/* -----------------------------------------------------------------------------
+ * Sprite Parsing
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Sprite header structure (12 bytes at start of sprite asset).
+ */
+typedef struct {
+    u16 anim_count;         /* Number of animations */
+    u16 frame_meta_offset;  /* Offset to frame metadata array */
+    u32 rle_data_offset;    /* Offset to RLE pixel data */
+    u32 palette_offset;     /* Offset to embedded 256-color palette */
+} SpriteHeader;
+
+/**
+ * Animation entry (12 bytes).
+ */
+typedef struct {
+    u32 anim_id;            /* Animation identifier */
+    u16 frame_count;        /* Number of frames */
+    u16 frame_data_offset;  /* Offset into frame metadata array */
+    u16 flags;              /* Animation flags */
+    u16 padding;
+} SpriteAnim;
+
+/**
+ * Frame metadata (36 bytes).
+ */
+typedef struct {
+    u16 callback_id;
+    u16 padding1;
+    u16 flip_flags;
+    s16 render_x;
+    s16 render_y;
+    u16 width;
+    u16 height;
+    u16 delay;
+    u16 padding2;
+    s16 hitbox_x;
+    s16 hitbox_y;
+    u16 hitbox_w;
+    u16 hitbox_h;
+    u32 padding3;
+    u32 rle_offset;         /* Offset relative to sprite's rle_data_offset */
+} SpriteFrame;
+
+/**
+ * Parse sprite container (Asset 600) and get sprite count.
+ * 
+ * @param sprite_data       Pointer to sprite container asset data
+ * @param out_count         Output: number of sprites
+ * @return                  0 on success, -1 on error
+ */
+int BLB_ParseSpriteContainer(const u8* sprite_data, u32* out_count);
+
+/**
+ * Get a specific sprite from container.
+ * 
+ * @param sprite_data       Pointer to sprite container asset data
+ * @param sprite_index      Sprite index (0-based)
+ * @param out_sprite_id     Output: sprite ID
+ * @param out_size          Output: sprite data size in bytes
+ * @return                  Pointer to individual sprite data, or NULL if invalid
+ */
+const u8* BLB_GetSpriteFromContainer(const u8* sprite_data, u32 sprite_index,
+                                     u32* out_sprite_id, u32* out_size);
+
+/**
+ * Parse sprite header.
+ * 
+ * @param sprite_data       Pointer to individual sprite data
+ * @param out_header        Output: sprite header structure
+ * @return                  0 on success, -1 on error
+ */
+int BLB_ParseSpriteHeader(const u8* sprite_data, SpriteHeader* out_header);
+
+/**
+ * Get sprite animation by index.
+ * 
+ * @param sprite_data       Pointer to individual sprite data
+ * @param anim_index        Animation index (0-based)
+ * @param out_anim          Output: animation structure
+ * @return                  0 on success, -1 on error
+ */
+int BLB_GetSpriteAnimation(const u8* sprite_data, u32 anim_index, SpriteAnim* out_anim);
+
+/**
+ * Get sprite frame metadata.
+ * 
+ * @param sprite_data       Pointer to individual sprite data
+ * @param frame_meta_offset Frame metadata base offset
+ * @param frame_index       Frame index in metadata array
+ * @param out_frame         Output: frame metadata structure
+ * @return                  0 on success, -1 on error
+ */
+int BLB_GetSpriteFrameMetadata(const u8* sprite_data, u16 frame_meta_offset,
+                               u32 frame_index, SpriteFrame* out_frame);
+
+/**
+ * Get sprite's embedded palette.
+ * 
+ * @param sprite_data       Pointer to individual sprite data
+ * @param palette_offset    Palette offset from sprite header
+ * @return                  Pointer to 256-color palette (512 bytes), or NULL if invalid
+ */
+const u16* BLB_GetSpritePalette(const u8* sprite_data, u32 palette_offset);
+
 /* =============================================================================
  * TOOL-ONLY CODE BELOW - NOT PART OF ORIGINAL GAME
  * 

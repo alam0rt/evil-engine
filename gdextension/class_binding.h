@@ -76,6 +76,25 @@ void bind_method_2_r(
     GDExtensionVariantType arg2_type
 );
 
+/**
+ * Bind a method with 4 arguments and return value.
+ */
+void bind_method_4_r(
+    const char* class_name,
+    const char* method_name,
+    GDExtensionClassMethodCall call_func,
+    GDExtensionClassMethodPtrCall ptrcall_func,
+    GDExtensionVariantType return_type,
+    const char* arg1_name,
+    GDExtensionVariantType arg1_type,
+    const char* arg2_name,
+    GDExtensionVariantType arg2_type,
+    const char* arg3_name,
+    GDExtensionVariantType arg3_type,
+    const char* arg4_name,
+    GDExtensionVariantType arg4_type
+);
+
 /* -----------------------------------------------------------------------------
  * Class Registration Helper
  * -------------------------------------------------------------------------- */

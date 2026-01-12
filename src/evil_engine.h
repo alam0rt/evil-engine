@@ -146,6 +146,117 @@ const u16* EvilEngine_GetTilePalette(const LevelContext* level, int tile_index);
  */
 int EvilEngine_GetTotalTiles(const LevelContext* level);
 
+/**
+ * Get tile flags for a tile.
+ * @param level         Level context
+ * @param tile_index    Tile index (0-based)
+ * @return              Tile flags byte (bit 0=semitrans, bit 1=8x8, bit 2=skip)
+ */
+int EvilEngine_GetTileFlags(const LevelContext* level, int tile_index);
+
+/* -----------------------------------------------------------------------------
+ * Palette Operations
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Get palette count from level.
+ * @param level         Level context
+ * @return              Number of palettes available
+ */
+int EvilEngine_GetPaletteCount(const LevelContext* level);
+
+/**
+ * Get a specific palette.
+ * @param level         Level context
+ * @param palette_index Palette index (0-based)
+ * @param out_size      Output: palette size in bytes (typically 512)
+ * @return              Pointer to palette data (PSX 15-bit RGB), or NULL if invalid
+ */
+const u16* EvilEngine_GetPalette(const LevelContext* level, int palette_index, int* out_size);
+
+/**
+ * Convert PSX 15-bit color to RGBA (0xAABBGGRR format).
+ * @param psx_color     PSX 15-bit color value
+ * @return              32-bit RGBA color
+ */
+unsigned int EvilEngine_PSXColorToRGBA(unsigned short psx_color);
+
+/* -----------------------------------------------------------------------------
+ * Sprite Operations
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Get sprite count from a segment.
+ * @param segment_data  Pointer to sprite container (Asset 600)
+ * @param out_count     Output: number of sprites
+ * @return              0 on success, -1 on error
+ */
+int EvilEngine_GetSpriteCount(const unsigned char* segment_data, int* out_count);
+
+/**
+ * Get sprite data from container.
+ * @param segment_data  Pointer to sprite container
+ * @param sprite_index  Sprite index (0-based)
+ * @param out_sprite_id Output: sprite ID
+ * @param out_size      Output: sprite data size
+ * @return              Pointer to sprite data, or NULL if invalid
+ */
+const unsigned char* EvilEngine_GetSprite(const unsigned char* segment_data, int sprite_index,
+                                          unsigned int* out_sprite_id, int* out_size);
+
+/**
+ * Parse sprite header.
+ * @param sprite_data   Pointer to sprite data
+ * @param out_header    Output: header structure pointer
+ * @return              0 on success, -1 on error
+ */
+int EvilEngine_ParseSpriteHeader(const unsigned char* sprite_data, void* out_header);
+
+/**
+ * Get sprite animation.
+ * @param sprite_data   Pointer to sprite data
+ * @param anim_index    Animation index (0-based)
+ * @param out_anim      Output: animation structure pointer
+ * @return              0 on success, -1 on error
+ */
+int EvilEngine_GetSpriteAnimation(const unsigned char* sprite_data, int anim_index, void* out_anim);
+
+/**
+ * Get sprite frame metadata.
+ * @param sprite_data       Pointer to sprite data
+ * @param frame_meta_offset Frame metadata base offset
+ * @param frame_index       Frame index
+ * @param out_frame         Output: frame structure pointer
+ * @return                  0 on success, -1 on error
+ */
+int EvilEngine_GetSpriteFrameMetadata(const unsigned char* sprite_data, int frame_meta_offset,
+                                      int frame_index, void* out_frame);
+
+/**
+ * Get sprite's embedded palette.
+ * @param sprite_data   Pointer to sprite data
+ * @param palette_offset Palette offset
+ * @return              Pointer to 256-color palette (512 bytes), or NULL
+ */
+const unsigned short* EvilEngine_GetSpritePalette(const unsigned char* sprite_data, unsigned int palette_offset);
+
+/* -----------------------------------------------------------------------------
+ * Raw Asset Access
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Find and get raw asset data from a level segment.
+ * @param blb           BLB file handle
+ * @param level_index   Level index
+ * @param stage_index   Stage index
+ * @param segment_type  0=primary, 1=secondary, 2=tertiary
+ * @param asset_id      Asset type ID
+ * @param out_size      Output: asset size in bytes
+ * @return              Pointer to asset data, or NULL if not found
+ */
+const unsigned char* EvilEngine_GetAssetData(const BLBFile* blb, int level_index, int stage_index,
+                                             int segment_type, unsigned int asset_id, int* out_size);
+
 /* -----------------------------------------------------------------------------
  * BLB File Operations (WRITE)
  * -------------------------------------------------------------------------- */

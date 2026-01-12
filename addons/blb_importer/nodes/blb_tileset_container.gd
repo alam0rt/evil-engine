@@ -23,6 +23,11 @@ extends Node2D
 @export var palette_count: int = 0
 @export var colors_per_palette: int = 256
 
+## Tile size breakdown
+@export_group("Tile Sizes")
+@export var tile_16x16_count: int = 0
+@export var tile_8x8_count: int = 0
+
 ## The actual TileSet resource
 @export var tileset: TileSet = null
 
@@ -36,4 +41,6 @@ func _get_configuration_warnings() -> PackedStringArray:
 		warnings.append("No TileSet loaded")
 	if tile_atlas == null:
 		warnings.append("No tile atlas texture")
+	if tile_8x8_count > 0:
+		warnings.append("Contains %d 8x8 tiles (centered in 16×16 cells)" % tile_8x8_count)
 	return warnings

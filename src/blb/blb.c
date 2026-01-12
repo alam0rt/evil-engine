@@ -263,6 +263,216 @@ const u8* BLB_FindAsset(const BLBFile* blb, const u8* segment_start,
 }
 
 /* -----------------------------------------------------------------------------
+ * Palette Parsing
+ * -------------------------------------------------------------------------- */
+
+int BLB_ParsePaletteContainer(const u8* palette_data, u32* out_count) {
+    u32 count;
+    
+    if (!palette_data || !out_count) {
+        if (out_count) *out_count = 0;
+        return -1;
+    }
+    
+    count = read_u32(palette_data);
+    
+    /* Sanity check - shouldn't have more than 256 palettes */
+    if (count > 256) {
+        *out_count = 0;
+        return -1;
+    }
+    
+    *out_count = count;
+    return 0;
+}
+
+const u16* BLB_GetPaletteFromContainer(const u8* palette_data, u8 palette_index, u32* out_size) {
+    u32 count, pal_offset, pal_size;
+    const u8* sub_toc;
+    
+    if (!palette_data) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Read sub-TOC count */
+    count = read_u32(palette_data);
+    if (palette_index >= count) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Sub-TOC entries are 12 bytes each (same as TOCEntry) */
+    sub_toc = palette_data + 4 + (palette_index * 12);
+    pal_size = read_u32(sub_toc + 4);
+    pal_offset = read_u32(sub_toc + 8);
+    
+    if (out_size) *out_size = pal_size;
+    return (const u16*)(palette_data + pal_offset);
+}
+
+u32 BLB_PSXColorToRGBA(u16 psx_color) {
+    u8 r, g, b, a;
+    
+    /* PSX format: 0BBBBBGGGGGRRRRR (5 bits per channel) */
+    r = (psx_color & 0x1F) << 3;          /* Red: bits 0-4 */
+    g = ((psx_color >> 5) & 0x1F) << 3;   /* Green: bits 5-9 */
+    b = ((psx_color >> 10) & 0x1F) << 3;  /* Blue: bits 10-14 */
+    
+    /* Color index 0 is transparent, bit 15 = semi-transparent flag */
+    a = (psx_color == 0) ? 0 : 255;
+    
+    /* Return as 0xAABBGGRR */
+    return ((u32)a << 24) | ((u32)b << 16) | ((u32)g << 8) | r;
+}
+
+/* -----------------------------------------------------------------------------
+ * Sprite Parsing
+ * -------------------------------------------------------------------------- */
+
+int BLB_ParseSpriteContainer(const u8* sprite_data, u32* out_count) {
+    u32 count;
+    
+    if (!sprite_data || !out_count) {
+        if (out_count) *out_count = 0;
+        return -1;
+    }
+    
+    count = read_u32(sprite_data);
+    
+    /* Sanity check - shouldn't have more than 500 sprites */
+    if (count > 500) {
+        *out_count = 0;
+        return -1;
+    }
+    
+    *out_count = count;
+    return 0;
+}
+
+const u8* BLB_GetSpriteFromContainer(const u8* sprite_data, u32 sprite_index,
+                                     u32* out_sprite_id, u32* out_size) {
+    u32 count, sprite_id, sprite_size, sprite_offset;
+    const u8* toc_entry;
+    
+    if (!sprite_data) {
+        if (out_sprite_id) *out_sprite_id = 0;
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Read TOC count */
+    count = read_u32(sprite_data);
+    if (sprite_index >= count) {
+        if (out_sprite_id) *out_sprite_id = 0;
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* TOC entries are 12 bytes each */
+    toc_entry = sprite_data + 4 + (sprite_index * 12);
+    sprite_id = read_u32(toc_entry + 0);
+    sprite_size = read_u32(toc_entry + 4);
+    sprite_offset = read_u32(toc_entry + 8);
+    
+    if (out_sprite_id) *out_sprite_id = sprite_id;
+    if (out_size) *out_size = sprite_size;
+    
+    return sprite_data + sprite_offset;
+}
+
+int BLB_ParseSpriteHeader(const u8* sprite_data, SpriteHeader* out_header) {
+    if (!sprite_data || !out_header) {
+        return -1;
+    }
+    
+    out_header->anim_count = read_u16(sprite_data + 0);
+    out_header->frame_meta_offset = read_u16(sprite_data + 2);
+    out_header->rle_data_offset = read_u32(sprite_data + 4);
+    out_header->palette_offset = read_u32(sprite_data + 8);
+    
+    /* Sanity check */
+    if (out_header->anim_count > 100) {
+        return -1;
+    }
+    
+    return 0;
+}
+
+int BLB_GetSpriteAnimation(const u8* sprite_data, u32 anim_index, SpriteAnim* out_anim) {
+    const u8* anim_data;
+    SpriteHeader header;
+    
+    if (!sprite_data || !out_anim) {
+        return -1;
+    }
+    
+    /* Parse header to get anim count */
+    if (BLB_ParseSpriteHeader(sprite_data, &header) != 0) {
+        return -1;
+    }
+    
+    if (anim_index >= header.anim_count) {
+        return -1;
+    }
+    
+    /* Animations start at offset 12 (after header), 12 bytes each */
+    anim_data = sprite_data + 12 + (anim_index * 12);
+    
+    out_anim->anim_id = read_u32(anim_data + 0);
+    out_anim->frame_count = read_u16(anim_data + 4);
+    out_anim->frame_data_offset = read_u16(anim_data + 6);
+    out_anim->flags = read_u16(anim_data + 8);
+    out_anim->padding = read_u16(anim_data + 10);
+    
+    return 0;
+}
+
+int BLB_GetSpriteFrameMetadata(const u8* sprite_data, u16 frame_meta_offset,
+                               u32 frame_index, SpriteFrame* out_frame) {
+    const u8* frame_data;
+    
+    if (!sprite_data || !out_frame) {
+        return -1;
+    }
+    
+    /* Frame metadata is 36 bytes each */
+    frame_data = sprite_data + frame_meta_offset + (frame_index * 36);
+    
+    out_frame->callback_id = read_u16(frame_data + 0);
+    out_frame->padding1 = read_u16(frame_data + 2);
+    out_frame->flip_flags = read_u16(frame_data + 4);
+    out_frame->render_x = (s16)read_u16(frame_data + 6);
+    out_frame->render_y = (s16)read_u16(frame_data + 8);
+    out_frame->width = read_u16(frame_data + 10);
+    out_frame->height = read_u16(frame_data + 12);
+    out_frame->delay = read_u16(frame_data + 14);
+    out_frame->padding2 = read_u16(frame_data + 16);
+    out_frame->hitbox_x = (s16)read_u16(frame_data + 18);
+    out_frame->hitbox_y = (s16)read_u16(frame_data + 20);
+    out_frame->hitbox_w = read_u16(frame_data + 22);
+    out_frame->hitbox_h = read_u16(frame_data + 24);
+    out_frame->padding3 = read_u32(frame_data + 28);
+    out_frame->rle_offset = read_u32(frame_data + 32);
+    
+    /* Sanity check dimensions */
+    if (out_frame->width > 512 || out_frame->height > 512) {
+        return -1;
+    }
+    
+    return 0;
+}
+
+const u16* BLB_GetSpritePalette(const u8* sprite_data, u32 palette_offset) {
+    if (!sprite_data) {
+        return NULL;
+    }
+    
+    /* Palette is 256 colors × 2 bytes = 512 bytes */
+    return (const u16*)(sprite_data + palette_offset);
+}
+
+/* -----------------------------------------------------------------------------
  * BLB File Write Operations
  * -------------------------------------------------------------------------- */
 

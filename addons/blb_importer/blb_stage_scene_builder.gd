@@ -35,7 +35,7 @@ const BLBSprite = preload("res://addons/blb_importer/nodes/blb_sprite.gd")
 const BLBPaletteContainer = preload("res://addons/blb_importer/nodes/blb_palette_container.gd")
 const BLBPalette = preload("res://addons/blb_importer/nodes/blb_palette.gd")
 const BLBTileAttributes = preload("res://addons/blb_importer/nodes/blb_tile_attributes.gd")
-const EntitySprites = preload("res://demo/entity_sprites.gd")
+const EntitySprites = preload("res://addons/blb_importer/game_data/entity_sprites.gd")
 const BLBSpriteBankScript = preload("res://addons/blb_importer/resources/blb_sprite_bank.gd")
 const BLBLevelScript = preload("res://addons/blb_importer/resources/blb_level.gd")
 
@@ -207,8 +207,22 @@ func _build_tileset_container(tile_pixels: PackedByteArray, palette_indices: Pac
 	container.tile_flag_count = tile_flags.size()
 	container.palette_count = palettes.size()
 	
+	# Count 8x8 tiles for debugging
+	var tile_8x8_count := 0
+	for tile_idx in range(total_tiles):
+		var is_8x8 := false
+		if tile_idx < tile_flags.size():
+			is_8x8 = (tile_flags[tile_idx] & 0x02) != 0
+		elif tile_idx >= count_16x16:
+			is_8x8 = true
+		if is_8x8:
+			tile_8x8_count += 1
+	
+	container.tile_16x16_count = total_tiles - tile_8x8_count
+	container.tile_8x8_count = tile_8x8_count
+	
 	# Build tile atlas texture
-	var atlas_image := _build_tile_atlas(tile_pixels, palette_indices, palettes, total_tiles)
+	var atlas_image := _build_tile_atlas(tile_pixels, palette_indices, tile_flags, palettes, total_tiles, count_16x16)
 	if not atlas_image:
 		return {"container": container, "tileset": null}
 	
@@ -238,25 +252,56 @@ func _build_tileset_container(tile_pixels: PackedByteArray, palette_indices: Pac
 
 
 func _build_tile_atlas(tile_pixels: PackedByteArray, palette_indices: PackedByteArray,
-		palettes: Array, total_tiles: int) -> Image:
-	"""Build atlas image from tile pixels"""
+		tile_flags: PackedByteArray, palettes: Array, total_tiles: int, count_16x16: int) -> Image:
+	"""Build atlas image from tile pixels, handling both 16x16 and 8x8 tiles
+	
+	Matches C99 logic from GetTilePixelDataPtr:
+	- 16x16 tiles: 256 bytes each at offset tile_idx * 256
+	- 8x8 tiles: 128 bytes each at offset count_16x16 * 256 + (tile_idx - count_16x16) * 128
+	- 8x8 tiles are stored as 8 rows × 16 bytes (only first 8 columns used)
+	- 8x8 tiles are centered in 16×16 atlas cells for consistent TileSet regions
+	"""
 	if palettes.is_empty():
 		return null
 	
+	# Build atlas with 16×16 cells, centering 8x8 tiles
 	var atlas_cols := TILES_PER_ROW
 	var atlas_rows := (total_tiles + atlas_cols - 1) / atlas_cols
-	var atlas_width := atlas_cols * TILE_SIZE
+	var atlas_width := atlas_cols * TILE_SIZE  # TILE_SIZE = 16
 	var atlas_height := atlas_rows * TILE_SIZE
 	
 	var atlas := Image.create(atlas_width, atlas_height, false, Image.FORMAT_RGBA8)
 	atlas.fill(Color(0, 0, 0, 0))
 	
-	var bytes_per_tile := TILE_SIZE * TILE_SIZE
+	var tile_8x8_count := 0
 	
 	for tile_idx in range(total_tiles):
-		var tile_offset := tile_idx * bytes_per_tile
-		if tile_offset + bytes_per_tile > tile_pixels.size():
-			continue
+		# Determine tile size (matches C99 logic: check flags, then position)
+		var is_8x8 := false
+		if tile_idx < tile_flags.size():
+			is_8x8 = (tile_flags[tile_idx] & 0x02) != 0  # TILE_FLAG_8X8
+		elif tile_idx >= count_16x16:
+			is_8x8 = true
+		
+		if is_8x8:
+			tile_8x8_count += 1
+		
+		# Calculate pixel data offset (matches C99 GetTilePixelDataPtr)
+		var tile_offset: int
+		var tile_width: int
+		var tile_height: int
+		
+		if is_8x8:
+			# 8x8 tile: 128 bytes (8 rows × 16 bytes, only first 8 cols used)
+			# Offset: count_16x16 * 0x100 + (tile_idx - count_16x16) * 0x80
+			tile_offset = count_16x16 * 256 + (tile_idx - count_16x16) * 128
+			tile_width = 8
+			tile_height = 8
+		else:
+			# 16x16 tile: 256 bytes
+			tile_offset = tile_idx * 256
+			tile_width = 16
+			tile_height = 16
 		
 		# Get palette for this tile
 		var pal_idx := 0
@@ -266,14 +311,22 @@ func _build_tile_atlas(tile_pixels: PackedByteArray, palette_indices: PackedByte
 			pal_idx = 0
 		var palette: PackedColorArray = palettes[pal_idx] if palettes.size() > 0 else PackedColorArray()
 		
-		# Atlas position
+		# Atlas position (always use 16×16 cells)
 		var atlas_x := (tile_idx % atlas_cols) * TILE_SIZE
 		var atlas_y := (tile_idx / atlas_cols) * TILE_SIZE
 		
-		# Copy pixels
-		for py in range(TILE_SIZE):
-			for px in range(TILE_SIZE):
-				var pixel_offset := tile_offset + py * TILE_SIZE + px
+		# Center 8x8 tiles in 16×16 cell
+		var offset_x := 0
+		var offset_y := 0
+		if is_8x8:
+			offset_x = (TILE_SIZE - tile_width) / 2  # = 4 pixels
+			offset_y = (TILE_SIZE - tile_height) / 2  # = 4 pixels
+		
+		# Copy pixels (matches C99 layout: both sizes stored as rows × 16 bytes)
+		for py in range(tile_height):
+			for px in range(tile_width):
+				# Always 16 bytes per row in the data (even for 8x8 tiles)
+				var pixel_offset := tile_offset + py * 16 + px
 				if pixel_offset >= tile_pixels.size():
 					continue
 				
@@ -285,7 +338,10 @@ func _build_tile_atlas(tile_pixels: PackedByteArray, palette_indices: PackedByte
 					if color_idx == 0:
 						color.a = 0.0
 				
-				atlas.set_pixel(atlas_x + px, atlas_y + py, color)
+				atlas.set_pixel(atlas_x + offset_x + px, atlas_y + offset_y + py, color)
+	
+	if tile_8x8_count > 0:
+		print("[BLBStageSceneBuilder] Atlas built: %d total tiles (%d are 8x8, centered)" % [total_tiles, tile_8x8_count])
 	
 	return atlas
 
