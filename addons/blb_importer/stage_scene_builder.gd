@@ -191,12 +191,23 @@ func _build_atlas_image(tile_pixels: PackedByteArray, palette_indices: PackedByt
 					# Fallback: grayscale
 					color = Color8(color_idx, color_idx, color_idx, 255)
 				
-				# For 8x8 tiles, center them in the 16x16 cell
-				var dest_x := atlas_x + px
-				var dest_y := atlas_y + py
-				
-				if dest_x < atlas_width and dest_y < atlas_height:
-					image.set_pixel(dest_x, dest_y, color)
+				# For 8x8 tiles, scale 2x to fill 16x16 cell (PSX-authentic behavior)
+				# Verified via Ghidra: RenderTilemapSprites16x16 (0x8001713c) always uses
+				# SPRT_16 and 16-pixel grid spacing regardless of tile size
+				if is_8x8:
+					# Scale 2x: each 8x8 pixel becomes a 2x2 block
+					var dest_x := atlas_x + px * 2
+					var dest_y := atlas_y + py * 2
+					if dest_x + 1 < atlas_width and dest_y + 1 < atlas_height:
+						image.set_pixel(dest_x, dest_y, color)
+						image.set_pixel(dest_x + 1, dest_y, color)
+						image.set_pixel(dest_x, dest_y + 1, color)
+						image.set_pixel(dest_x + 1, dest_y + 1, color)
+				else:
+					var dest_x := atlas_x + px
+					var dest_y := atlas_y + py
+					if dest_x < atlas_width and dest_y < atlas_height:
+						image.set_pixel(dest_x, dest_y, color)
 		
 		pixel_offset += pixels_in_tile
 	
