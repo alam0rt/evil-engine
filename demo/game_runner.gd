@@ -257,8 +257,11 @@ func _initialize_and_load_level() -> void:
 		return
 	
 	# Resolve level_id to level_index using C99 library
+	print("[GameRunner] DEBUG: level_index=%d, level_id='%s'" % [level_index, level_id])
 	if level_index < 0 and level_id != "":
-		level_index = blb_archive.find_level_by_id(level_id)
+		var found_idx = blb_archive.find_level_by_id(level_id)
+		print("[GameRunner] DEBUG: find_level_by_id('%s') returned %d" % [level_id, found_idx])
+		level_index = found_idx
 		if level_index < 0:
 			push_error("[GameRunner] Unknown level ID: %s" % level_id)
 			return

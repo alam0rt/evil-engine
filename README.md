@@ -7,6 +7,7 @@ STAY TOONED
 #### do first
 
 - Fix find_level_by_id from returning -1 when running game runner (get game runner going somewhat)
+- Implement blb_extract using C lib
 
 #### later
 
