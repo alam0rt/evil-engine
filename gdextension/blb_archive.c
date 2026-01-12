@@ -2,260 +2,450 @@
  * blb_archive.c - GDExtension BLBArchive Implementation
  * 
  * Implements the BLBArchive class exposed to GDScript.
- * This is a thin wrapper around the C99 evil_engine library.
+ * This wraps the C99 evil_engine library for fast BLB parsing.
  * 
- * NOTE: This is currently a stub implementation showing the structure.
- * The actual BLB reading is handled by the pure GDScript BLBReader class,
- * which is complete and functional. This GDExtension wrapper is optional
- * and can be completed later for performance-critical operations.
+ * Primary use case: decode sprites in C instead of slow GDScript.
  */
 
 #include "blb_archive.h"
-#include "defs.h"
-#include "gd_helpers.h"
+#include "api.h"
+#include "class_binding.h"
+#include "../src/blb/blb.h"
+#include "../src/render/sprite.h"
 #include <stdlib.h>
 #include <string.h>
 
-/* -----------------------------------------------------------------------------
- * Instance Methods
- * -------------------------------------------------------------------------- */
-
-/* Constructor */
-static void* blb_archive_constructor(void* p_class_userdata) {
-    GDBLBArchive* self = (GDBLBArchive*)calloc(1, sizeof(GDBLBArchive));
-    (void)p_class_userdata;
-    
-    if (self) {
-        self->blb = NULL;
-        self->level = NULL;
-        self->blb_owned = 0;
-        self->level_owned = 0;
-    }
-    
-    return self;
-}
-
-/* Destructor */
-static void blb_archive_destructor(void* p_class_userdata, GDExtensionClassInstancePtr p_instance) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    (void)p_class_userdata;
-    
-    if (!self) return;
-    
-    /* Clean up level if owned */
-    if (self->level_owned && self->level) {
-        EvilEngine_UnloadLevel(self->level);
-    }
-    
-    /* Clean up BLB if owned */
-    if (self->blb_owned && self->blb) {
-        EvilEngine_CloseBLB(self->blb);
-    }
-    
-    free(self);
-}
+/* Class name constant */
+#define CLASS_NAME "BLBArchive"
 
 /* -----------------------------------------------------------------------------
- * BLB File Operations (READ)
+ * Instance Data
  * -------------------------------------------------------------------------- */
 
-/* bool open(String path) */
-static void blb_archive_open(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                             const GDExtensionConstVariantPtr* p_args, 
-                             GDExtensionInt p_argument_count,
-                             GDExtensionVariantPtr r_return,
-                             GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    (void)p_method_userdata;
+typedef struct {
+    BLBFile blb;
+    int is_open;
+} BLBArchiveData;
+
+/* -----------------------------------------------------------------------------
+ * Constructor / Destructor
+ * -------------------------------------------------------------------------- */
+
+static GDExtensionObjectPtr blb_archive_create(void* p_class_userdata) {
+    (void)p_class_userdata;
+    
+    /* Create the Godot object */
+    GdStringName class_name;
+    string_name_new(&class_name, "RefCounted");
+    GDExtensionObjectPtr obj = api.classdb_construct_object((GDExtensionConstStringNamePtr)&class_name);
+    string_name_destroy(&class_name);
+    
+    if (!obj) return NULL;
+    
+    /* Allocate our instance data */
+    BLBArchiveData* data = (BLBArchiveData*)api.mem_alloc(sizeof(BLBArchiveData));
+    if (!data) return obj;
+    
+    memset(data, 0, sizeof(BLBArchiveData));
+    
+    /* Bind our data to the object */
+    GdStringName our_class;
+    string_name_new(&our_class, CLASS_NAME);
+    api.object_set_instance(obj, (GDExtensionConstStringNamePtr)&our_class, data);
+    string_name_destroy(&our_class);
+    
+    return obj;
+}
+
+static void blb_archive_free(void* p_class_userdata, GDExtensionClassInstancePtr p_instance) {
+    (void)p_class_userdata;
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data) return;
+    
+    if (data->is_open) {
+        BLB_Close(&data->blb);
+    }
+    
+    api.mem_free(data);
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: open(path: String) -> bool
+ * -------------------------------------------------------------------------- */
+
+static void blb_open_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
     (void)r_error;
     
-    if (!self || p_argument_count < 1) {
-        gd_variant_new_bool(r_return, false);
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || p_argument_count < 1) {
+        variant_new_bool((GdVariant*)r_return, 0);
         return;
     }
     
-    /* TODO: Extract string from p_args[0] using gd_variant_to_cstring()
-     * Then call EvilEngine_OpenBLB(path, &self->blb)
-     * For now, return false as stub */
-    gd_variant_new_bool(r_return, false);
-}
-
-/* int get_level_count() */
-static void blb_archive_get_level_count(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                                        const GDExtensionConstVariantPtr* p_args,
-                                        GDExtensionInt p_argument_count,
-                                        GDExtensionVariantPtr r_return,
-                                        GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    int count = 0;
-    (void)p_method_userdata;
-    (void)p_args;
-    (void)p_argument_count;
-    (void)r_error;
-    
-    if (self && self->blb) {
-        count = EvilEngine_GetLevelCount(self->blb);
+    /* Close existing if open */
+    if (data->is_open) {
+        BLB_Close(&data->blb);
+        data->is_open = 0;
     }
     
-    gd_variant_new_int(r_return, count);
-}
-
-/* String get_level_name(int index) */
-static void blb_archive_get_level_name(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                                       const GDExtensionConstVariantPtr* p_args,
-                                       GDExtensionInt p_argument_count,
-                                       GDExtensionVariantPtr r_return,
-                                       GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    const char* name = "";
-    (void)p_method_userdata;
-    (void)p_argument_count;
-    (void)r_error;
-    
-    if (self && self->blb && p_args && p_argument_count > 0) {
-        /* TODO: Extract int from p_args[0] using gd_variant_as_int()
-         * Then call EvilEngine_GetLevelName(self->blb, index) */
+    /* Extract path from variant */
+    char* path = variant_as_cstring((const GdVariant*)p_args[0]);
+    if (!path) {
+        variant_new_bool((GdVariant*)r_return, 0);
+        return;
     }
     
-    gd_cstring_to_variant(r_return, name);
-}
-
-/* bool load_level(int level_index, int stage_index) */
-static void blb_archive_load_level(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                                   const GDExtensionConstVariantPtr* p_args,
-                                   GDExtensionInt p_argument_count,
-                                   GDExtensionVariantPtr r_return,
-                                   GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    (void)p_method_userdata;
-    (void)p_args;
-    (void)p_argument_count;
-    (void)r_error;
+    /* Open the BLB file */
+    int result = BLB_Open(path, &data->blb);
+    api.mem_free(path);
     
-    /* TODO: Extract int arguments using gd_variant_as_int()
-     * Then call EvilEngine_LoadLevel(self->blb, level_idx, stage_idx, &self->level) */
-    gd_variant_new_bool(r_return, false);
-}
-
-/* Dictionary get_tile_header() */
-static void blb_archive_get_tile_header(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                                        const GDExtensionConstVariantPtr* p_args,
-                                        GDExtensionInt p_argument_count,
-                                        GDExtensionVariantPtr r_return,
-                                        GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    (void)p_method_userdata;
-    (void)p_args;
-    (void)p_argument_count;
-    (void)r_error;
-    
-    /* Create empty dictionary directly into return value */
-    gd_variant_new_dictionary(r_return);
-    
-    if (self && self->level) {
-        const TileHeader* header = EvilEngine_GetTileHeader(self->level);
-        if (header) {
-            /* TODO: Populate dictionary with header fields */
-            /* This requires using dictionary_operator_index to set fields */
-        }
+    if (result == 0) {
+        data->is_open = 1;
+        variant_new_bool((GdVariant*)r_return, 1);
+    } else {
+        variant_new_bool((GdVariant*)r_return, 0);
     }
 }
 
-/* Array get_layers() */
-static void blb_archive_get_layers(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                                   const GDExtensionConstVariantPtr* p_args,
-                                   GDExtensionInt p_argument_count,
-                                   GDExtensionVariantPtr r_return,
-                                   GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    (void)p_method_userdata;
-    (void)p_args;
-    (void)p_argument_count;
-    (void)r_error;
-    
-    /* Create empty array directly into return value */
-    gd_variant_new_array(r_return);
-    
-    if (self && self->level) {
-        int layer_count = EvilEngine_GetLayerCount(self->level);
-        /* TODO: Populate array with layer dictionaries */
-        (void)layer_count;
-    }
-}
-
-/* Array get_entities() */
-static void blb_archive_get_entities(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                                     const GDExtensionConstVariantPtr* p_args,
-                                     GDExtensionInt p_argument_count,
-                                     GDExtensionVariantPtr r_return,
-                                     GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    (void)p_method_userdata;
-    (void)p_args;
-    (void)p_argument_count;
-    (void)r_error;
-    
-    /* Create empty array directly into return value */
-    gd_variant_new_array(r_return);
-    
-    if (self && self->level) {
-        int entity_count;
-        const EntityDef* entities = EvilEngine_GetEntities(self->level, &entity_count);
-        /* TODO: Populate array with entity dictionaries */
-        (void)entities;
-    }
-}
-
-/* PackedInt32Array get_layer_tilemap(int layer_index) */
-static void blb_archive_get_layer_tilemap(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                                          const GDExtensionConstVariantPtr* p_args,
-                                          GDExtensionInt p_argument_count,
-                                          GDExtensionVariantPtr r_return,
-                                          GDExtensionCallError* r_error) {
-    GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    (void)p_method_userdata;
-    (void)p_args;
-    (void)p_argument_count;
-    (void)r_error;
-    
-    /* Create empty packed array directly into return value */
-    gd_variant_new_packed_int32_array(r_return);
-    
-    if (self && self->level) {
-        /* TODO: Get tilemap and convert to PackedInt32Array */
-    }
-}
-
-/* PackedByteArray get_tile_pixels(int tile_index) */
-static void blb_archive_get_tile_pixels(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                                        const GDExtensionConstVariantPtr* p_args,
-                                        GDExtensionInt p_argument_count,
-                                        GDExtensionVariantPtr r_return,
-                                        GDExtensionCallError* r_error) {
-    (void)p_method_userdata;
+static void blb_open_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
     (void)p_instance;
     (void)p_args;
-    (void)p_argument_count;
-    (void)r_error;
-    
-    /* Create empty packed array directly into return value */
-    gd_variant_new_packed_byte_array(r_return);
+    /* ptrcall not fully implemented - just return false */
+    *(GDExtensionBool*)r_ret = 0;
 }
 
-/* PackedColorArray get_palette(int palette_index) */
-static void blb_archive_get_palette(void* p_method_userdata, GDExtensionClassInstancePtr p_instance,
-                                    const GDExtensionConstVariantPtr* p_args,
-                                    GDExtensionInt p_argument_count,
-                                    GDExtensionVariantPtr r_return,
-                                    GDExtensionCallError* r_error) {
-    (void)p_method_userdata;
-    (void)p_instance;
+/* -----------------------------------------------------------------------------
+ * Method: close() -> void
+ * -------------------------------------------------------------------------- */
+
+static void blb_close_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
     (void)p_args;
     (void)p_argument_count;
     (void)r_error;
     
-    /* Create empty packed array directly into return value */
-    gd_variant_new_packed_color_array(r_return);
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (data && data->is_open) {
+        BLB_Close(&data->blb);
+        data->is_open = 0;
+    }
+    
+    variant_new_nil((GdVariant*)r_return);
+}
+
+static void blb_close_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_args;
+    (void)r_ret;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    if (data && data->is_open) {
+        BLB_Close(&data->blb);
+        data->is_open = 0;
+    }
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_level_count() -> int
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_level_count_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)p_args;
+    (void)p_argument_count;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    int64_t count = 0;
+    
+    if (data && data->is_open) {
+        count = BLB_GetLevelCount(&data->blb);
+    }
+    
+    variant_new_int((GdVariant*)r_return, count);
+}
+
+static void blb_get_level_count_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_args;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    int64_t count = 0;
+    
+    if (data && data->is_open) {
+        count = BLB_GetLevelCount(&data->blb);
+    }
+    
+    *(int64_t*)r_ret = count;
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_level_id(index: int) -> String
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_level_id_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->is_open || p_argument_count < 1) {
+        variant_new_string((GdVariant*)r_return, "");
+        return;
+    }
+    
+    int64_t index = variant_as_int((const GdVariant*)p_args[0]);
+    const char* level_id = BLB_GetLevelID(&data->blb, (u8)index);
+    
+    if (level_id) {
+        variant_new_string((GdVariant*)r_return, level_id);
+    } else {
+        variant_new_string((GdVariant*)r_return, "");
+    }
+}
+
+static void blb_get_level_id_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    (void)p_args;
+    /* Create empty string */
+    api.string_new_with_utf8_chars((GDExtensionUninitializedStringPtr)r_ret, "");
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_level_name(index: int) -> String
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_level_name_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->is_open || p_argument_count < 1) {
+        variant_new_string((GdVariant*)r_return, "");
+        return;
+    }
+    
+    int64_t index = variant_as_int((const GdVariant*)p_args[0]);
+    const char* name = BLB_GetLevelName(&data->blb, (u8)index);
+    
+    if (name) {
+        variant_new_string((GdVariant*)r_return, name);
+    } else {
+        variant_new_string((GdVariant*)r_return, "");
+    }
+}
+
+static void blb_get_level_name_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    (void)p_args;
+    api.string_new_with_utf8_chars((GDExtensionUninitializedStringPtr)r_ret, "");
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_stage_count(level_index: int) -> int
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_stage_count_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    int64_t count = 0;
+    
+    if (data && data->is_open && p_argument_count >= 1) {
+        int64_t level_index = variant_as_int((const GdVariant*)p_args[0]);
+        count = BLB_GetStageCount(&data->blb, (u8)level_index);
+    }
+    
+    variant_new_int((GdVariant*)r_return, count);
+}
+
+static void blb_get_stage_count_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    int64_t count = 0;
+    
+    if (data && data->is_open && p_args) {
+        int64_t level_index = *(const int64_t*)p_args[0];
+        count = BLB_GetStageCount(&data->blb, (u8)level_index);
+    }
+    
+    *(int64_t*)r_ret = count;
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_primary_sector(level_index: int) -> int
+ * Returns the sector offset for the primary segment.
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_primary_sector_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    int64_t sector = 0;
+    
+    if (data && data->is_open && p_argument_count >= 1) {
+        int64_t level_index = variant_as_int((const GdVariant*)p_args[0]);
+        sector = BLB_GetPrimarySectorOffset(&data->blb, (u8)level_index);
+    }
+    
+    variant_new_int((GdVariant*)r_return, sector);
+}
+
+static void blb_get_primary_sector_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    int64_t sector = 0;
+    
+    if (data && data->is_open && p_args) {
+        int64_t level_index = *(const int64_t*)p_args[0];
+        sector = BLB_GetPrimarySectorOffset(&data->blb, (u8)level_index);
+    }
+    
+    *(int64_t*)r_ret = sector;
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_tertiary_sector(level_index: int, stage_index: int) -> int
+ * Returns the sector offset for the tertiary (stage) segment.
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_tertiary_sector_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    int64_t sector = 0;
+    
+    if (data && data->is_open && p_argument_count >= 2) {
+        int64_t level_index = variant_as_int((const GdVariant*)p_args[0]);
+        int64_t stage_index = variant_as_int((const GdVariant*)p_args[1]);
+        sector = BLB_GetTertiarySectorOffset(&data->blb, (u8)level_index, (u8)stage_index);
+    }
+    
+    variant_new_int((GdVariant*)r_return, sector);
+}
+
+static void blb_get_tertiary_sector_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    int64_t sector = 0;
+    
+    if (data && data->is_open && p_args) {
+        int64_t level_index = *(const int64_t*)p_args[0];
+        int64_t stage_index = *(const int64_t*)p_args[1];
+        sector = BLB_GetTertiarySectorOffset(&data->blb, (u8)level_index, (u8)stage_index);
+    }
+    
+    *(int64_t*)r_ret = sector;
 }
 
 /* -----------------------------------------------------------------------------
@@ -263,26 +453,64 @@ static void blb_archive_get_palette(void* p_method_userdata, GDExtensionClassIns
  * -------------------------------------------------------------------------- */
 
 void register_blb_archive_class(GDExtensionClassLibraryPtr p_library) {
-    /* TODO: Full class registration
-     * 
-     * This requires:
-     * 1. Cache GDExtension API function pointers
-     * 2. Create GDExtensionClassCreationInfo
-     * 3. Register constructor/destructor
-     * 4. Register all methods
-     * 5. Register class with Godot
-     * 
-     * For now, this is a placeholder showing the structure.
-     */
     (void)p_library;
     
-    /* NOTE: This is incomplete. A full implementation requires significant
-     * GDExtension boilerplate to properly register the class and bind methods.
-     * This would involve creating method info structures for each method,
-     * property info for any properties, and registering them all with Godot's
-     * ClassDB.
-     * 
-     * The methods above are implemented but not yet bound to GDScript.
-     */
+    /* Register the class */
+    register_class(CLASS_NAME, "RefCounted", blb_archive_create, blb_archive_free);
+    
+    /* Bind methods */
+    bind_method_1_r(
+        CLASS_NAME, "open",
+        blb_open_call, blb_open_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_BOOL,
+        "path", GDEXTENSION_VARIANT_TYPE_STRING
+    );
+    
+    bind_method_0(
+        CLASS_NAME, "close",
+        blb_close_call, blb_close_ptrcall
+    );
+    
+    bind_method_0_r(
+        CLASS_NAME, "get_level_count",
+        blb_get_level_count_call, blb_get_level_count_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "get_level_id",
+        blb_get_level_id_call, blb_get_level_id_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_STRING,
+        "index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "get_level_name",
+        blb_get_level_name_call, blb_get_level_name_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_STRING,
+        "index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "get_stage_count",
+        blb_get_stage_count_call, blb_get_stage_count_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT,
+        "level_index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "get_primary_sector",
+        blb_get_primary_sector_call, blb_get_primary_sector_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT,
+        "level_index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_2_r(
+        CLASS_NAME, "get_tertiary_sector",
+        blb_get_tertiary_sector_call, blb_get_tertiary_sector_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT,
+        "level_index", GDEXTENSION_VARIANT_TYPE_INT,
+        "stage_index", GDEXTENSION_VARIANT_TYPE_INT
+    );
 }
 

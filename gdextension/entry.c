@@ -1,5 +1,6 @@
 #include <gdextension_interface.h>
 #include <stddef.h>
+#include "api.h"
 #include "gd_helpers.h"
 
 /* Platform-specific export macro */
@@ -11,12 +12,9 @@
     #define GDE_EXPORT
 #endif
 
-/* Godot API function pointers (cached for performance) */
-static GDExtensionInterfaceGetProcAddress gde_get_proc_address;
-static GDExtensionClassLibraryPtr gde_library;
-
 /* Forward declarations */
 void engine_node_register(GDExtensionClassLibraryPtr p_library);
+void register_blb_archive_class(GDExtensionClassLibraryPtr p_library);
 
 /* Called at each initialization level */
 static void initialize_evil_engine(void *p_userdata, GDExtensionInitializationLevel p_level) {
@@ -24,7 +22,8 @@ static void initialize_evil_engine(void *p_userdata, GDExtensionInitializationLe
     
     if (p_level == GDEXTENSION_INITIALIZATION_SCENE) {
         /* Register our classes at scene level */
-        engine_node_register(gde_library);
+        engine_node_register(api.library);
+        register_blb_archive_class(api.library);
     }
 }
 
@@ -41,11 +40,10 @@ GDExtensionBool GDE_EXPORT evil_engine_init(
     GDExtensionClassLibraryPtr p_library,
     GDExtensionInitialization *r_initialization
 ) {
-    /* Store for later use */
-    gde_get_proc_address = p_get_proc_address;
-    gde_library = p_library;
+    /* Initialize API wrapper (caches all function pointers) */
+    api_init(p_get_proc_address, p_library);
 
-    /* Initialize helper functions */
+    /* Initialize legacy helper functions (for backwards compatibility) */
     gd_helpers_init(p_get_proc_address);
 
     /* Configure initialization */

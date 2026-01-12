@@ -592,8 +592,7 @@ func _build_sprite_frames(sprite_data: Dictionary, sprite_index: int) -> SpriteF
 					frames.add_frame(anim_name, texture)
 				total_decoded += 1
 	
-	# Suppress per-frame logging - use progress output instead
-	#print("  Sprite 0x%08x: %d animations, %d frames decoded" % [sprite_id, animations.size(), total_decoded])
+	print("  Sprite 0x%08x: %d animations, %d frames decoded" % [sprite_id, animations.size(), total_decoded])
 	return frames
 
 
@@ -660,10 +659,6 @@ func build_primary_sprite_bank(blb, level_id: String, level_index: int, resource
 		var sprite_id: int = sprite_data.get("id", 0)
 		if sprite_id == 0:
 			continue
-		
-		# Progress output every 10 sprites
-		if i % 10 == 0:
-			print("  Processing primary sprite %d/%d..." % [i + 1, primary_sprites.size()])
 		
 		var frames := _build_sprite_frames(sprite_data, i)
 		if frames and frames.get_animation_names().size() > 0:
