@@ -4,6 +4,12 @@ STAY TOONED
 
 ## TODO
 
+#### do first
+
+- Fix find_level_by_id from returning -1 when running game runner (get game runner going somewhat)
+
+#### later
+
 - Pick better names for levels (should be Worlds).
 - Ensure C99 library has tests.
 - Start moving decompiled functions from executable into evil_engine C library.
