@@ -196,4 +196,15 @@ int64_t variant_as_int(const GdVariant* p_self);
  */
 char* variant_as_cstring(const GdVariant* p_self);
 
+/**
+ * Create a new PackedByteArray variant (empty).
+ */
+void variant_new_packed_byte_array(GdVariant* r_dest);
+
+/**
+ * Create a new PackedByteArray variant from data.
+ * Note: Currently creates empty array (TODO: implement data copy).
+ */
+void variant_new_packed_byte_array_from_data(GdVariant* r_dest, const uint8_t* p_data, int p_size);
+
 #endif /* GDEXT_API_H */

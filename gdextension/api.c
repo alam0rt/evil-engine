@@ -225,3 +225,38 @@ char* variant_as_cstring(const GdVariant* p_self) {
     string_destroy(&str);
     return buffer;
 }
+
+void variant_new_packed_byte_array(GdVariant* r_dest) {
+    if (type_to_variant.from_packed_byte_array) {
+        /* Create empty PackedByteArray */
+        uint8_t empty_array[16] = {0};  /* PackedByteArray is 16 bytes */
+        type_to_variant.from_packed_byte_array((GDExtensionUninitializedVariantPtr)r_dest, (GDExtensionConstTypePtr)empty_array);
+    } else {
+        variant_new_nil(r_dest);
+    }
+}
+
+void variant_new_packed_byte_array_from_data(GdVariant* r_dest, const uint8_t* p_data, int p_size) {
+    if (!p_data || p_size <= 0) {
+        variant_new_packed_byte_array(r_dest);
+        return;
+    }
+    
+    /* Get PackedByteArray constructor from pointer */
+    GDExtensionPtrConstructor packed_constructor = (GDExtensionPtrConstructor)
+        api.get_variant_from_type_constructor(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY);
+    
+    if (!packed_constructor) {
+        variant_new_nil(r_dest);
+        return;
+    }
+    
+    /* Create PackedByteArray from raw pointer and size */
+    /* PackedByteArray has a constructor that takes const uint8_t* and int64_t size */
+    struct {
+        const uint8_t* data;
+        int64_t size;
+    } args = { p_data, (int64_t)p_size };
+    
+    packed_constructor((GDExtensionUninitializedVariantPtr)r_dest, (const GDExtensionConstTypePtr*)&args);
+}
