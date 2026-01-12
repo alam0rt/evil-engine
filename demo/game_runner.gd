@@ -104,8 +104,9 @@ var entity_container: Node2D
 var layer_container: Node2D
 var player_container: Node2D
 
-# BLB reader
-var blb_reader: Object = null
+# BLB access - prefer C99 GDExtension over GDScript reader
+var blb_archive: BLBArchive = null  # C99 GDExtension (fast, for level lookup/tiles/layers)
+var blb_reader: Object = null       # GDScript fallback (for stage_data dict)
 
 # Frame counter
 var frame_count: int = 0
@@ -248,8 +249,9 @@ func _initialize_and_load_level() -> void:
 	if blb_path.begins_with("res://"):
 		fs_path = ProjectSettings.globalize_path(blb_path)
 	
-	# Try to use BLBArchive (C99 GDExtension) for level lookup
-	var blb_archive = BLBArchive.new()
+	# Open BLB with C99 GDExtension (keep as member for later use)
+	if blb_archive == null:
+		blb_archive = BLBArchive.new()
 	if not blb_archive.open(fs_path):
 		push_error("[GameRunner] Failed to open BLB with C99 library: %s" % fs_path)
 		return
@@ -283,6 +285,10 @@ func _initialize_and_load_level() -> void:
 	if stage_data.is_empty():
 		push_error("[GameRunner] Failed to load stage data")
 		return
+	
+	# Also load in C99 library for fast tile/layer access
+	if not blb_archive.load_level(level_index, stage_index):
+		push_warning("[GameRunner] C99 load_level failed, using GDScript fallback")
 	
 	# LoadTileDataToVRAM (0x80025240) - handled by BLBReader
 	print("[GameRunner] LoadTileDataToVRAM... (handled by importer)")
@@ -341,15 +347,20 @@ func _init_player_spawn_position(stage_data: Dictionary) -> void:
 	print("[GameRunner] InitPlayerSpawnPosition: (%d, %d)" % [game_state.spawn_x, game_state.spawn_y])
 
 
-func _load_bg_color(stage_data: Dictionary) -> void:
+func _load_bg_color(_stage_data: Dictionary) -> void:
 	## Mirrors LoadBGColorFromTileHeader
 	## Sets the viewport clear color (visible where no layers cover)
+	## Uses C99 GDExtension for fast access
 	
-	var tile_header = stage_data.get("tile_header", {})
-	var r = tile_header.get("bg_r", 0)
-	var g = tile_header.get("bg_g", 0)
-	var b = tile_header.get("bg_b", 0)
-	game_state.bg_color = Color8(r, g, b)
+	if blb_archive != null:
+		game_state.bg_color = blb_archive.get_background_color()
+	else:
+		# Fallback to GDScript parsing
+		var tile_header = _stage_data.get("tile_header", {})
+		var r = tile_header.get("bg_r", 0)
+		var g = tile_header.get("bg_g", 0)
+		var b = tile_header.get("bg_b", 0)
+		game_state.bg_color = Color8(r, g, b)
 	
 	# Set clear color - this shows through where layers don't cover
 	RenderingServer.set_default_clear_color(game_state.bg_color)
@@ -357,6 +368,9 @@ func _load_bg_color(stage_data: Dictionary) -> void:
 	# Also set SubViewport's clear color
 	viewport.transparent_bg = false
 	
+	var r = int(game_state.bg_color.r8)
+	var g = int(game_state.bg_color.g8)
+	var b = int(game_state.bg_color.b8)
 	print("[GameRunner] BG Color: RGB(%d, %d, %d)" % [r, g, b])
 
 
@@ -422,9 +436,14 @@ func _init_layers_and_tile_state(stage_data: Dictionary) -> void:
 		stage_root.remove_child(tile_layers)
 		layer_container.add_child(tile_layers)
 		
-		# Store layer metadata for parallax updates
-		var layer_defs = stage_data.get("layers", [])
-		print("[GameRunner] layer_defs count: %d, tile_layers children: %d" % [layer_defs.size(), tile_layers.get_child_count()])
+		# Get layer count from C99 library if available
+		var c99_layer_count = 0
+		if blb_archive != null:
+			c99_layer_count = blb_archive.get_layer_count()
+		
+		print("[GameRunner] C99 layer_count: %d, tile_layers children: %d" % [c99_layer_count, tile_layers.get_child_count()])
+		
+		# Store layer metadata for parallax updates - prefer C99 GDExtension
 		for i in range(tile_layers.get_child_count()):
 			var layer_node = tile_layers.get_child(i)
 			
@@ -433,21 +452,27 @@ func _init_layers_and_tile_state(stage_data: Dictionary) -> void:
 			if layer_node.name.begins_with("Layer_"):
 				layer_idx = int(layer_node.name.substr(6))
 			
-			if layer_idx < layer_defs.size():
-				var layer_def = layer_defs[layer_idx]
-				var layer_info = {
-					"index": layer_idx,
-					"node": layer_node,
-					"base_position": layer_node.position,
-					"scroll_x": layer_def.get("scroll_x", 65536),
-					"scroll_y": layer_def.get("scroll_y", 65536),
-				}
-				layers.append(layer_info)
-				print("[GameRunner] Layer %d: base_pos=%s, scroll=%d,%d (%.3f,%.3f)" % [
-					layer_idx, layer_info.base_position,
-					layer_info.scroll_x, layer_info.scroll_y,
-					float(layer_info.scroll_x) / 65536.0, float(layer_info.scroll_y) / 65536.0
-				])
+			# Get scroll factors from C99 library
+			var scroll_x := 65536
+			var scroll_y := 65536
+			if blb_archive != null and layer_idx < c99_layer_count:
+				var c99_layer_info = blb_archive.get_layer_info(layer_idx)
+				scroll_x = c99_layer_info.get("scroll_x", 65536)
+				scroll_y = c99_layer_info.get("scroll_y", 65536)
+			
+			var layer_info = {
+				"index": layer_idx,
+				"node": layer_node,
+				"base_position": layer_node.position,
+				"scroll_x": scroll_x,
+				"scroll_y": scroll_y,
+			}
+			layers.append(layer_info)
+			print("[GameRunner] Layer %d: base_pos=%s, scroll=%d,%d (%.3f,%.3f)" % [
+				layer_idx, layer_info.base_position,
+				layer_info.scroll_x, layer_info.scroll_y,
+				float(layer_info.scroll_x) / 65536.0, float(layer_info.scroll_y) / 65536.0
+			])
 	
 	# Don't extract the Background ColorRect from StageSceneBuilder -
 	# we use the viewport clear color instead (set in _load_bg_color)
