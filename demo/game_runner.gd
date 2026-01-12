@@ -255,6 +255,7 @@ func _initialize_and_load_level() -> void:
 	if not blb_archive.open(fs_path):
 		push_error("[GameRunner] Failed to open BLB with C99 library: %s" % fs_path)
 		return
+	print("[GameRunner] DEBUG: BLB opened, level_count=%d" % blb_archive.get_level_count())
 	
 	# Resolve level_id to level_index using C99 library
 	print("[GameRunner] DEBUG: level_index=%d, level_id='%s'" % [level_index, level_id])

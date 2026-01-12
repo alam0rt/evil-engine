@@ -16,6 +16,7 @@
 #include "../src/evil_engine.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /* Class name constant */
 #define CLASS_NAME "BLBArchive"
@@ -359,9 +360,37 @@ static void blb_find_level_by_id_ptrcall(
     GDExtensionTypePtr r_ret
 ) {
     (void)method_userdata;
-    (void)p_instance;
-    (void)p_args;
-    *(int64_t*)r_ret = -1;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->is_open || !p_args || !p_args[0]) {
+        *(int64_t*)r_ret = -1;
+        return;
+    }
+    
+    /* p_args[0] is a pointer to GdString in ptrcall */
+    GDExtensionConstStringPtr gd_str = (GDExtensionConstStringPtr)p_args[0];
+    
+    /* Get string length */
+    GDExtensionInt len = api.string_to_utf8_chars(gd_str, NULL, 0);
+    if (len <= 0) {
+        *(int64_t*)r_ret = -1;
+        return;
+    }
+    
+    /* Allocate and convert to C string */
+    char* level_id = (char*)api.mem_alloc(len + 1);
+    if (!level_id) {
+        *(int64_t*)r_ret = -1;
+        return;
+    }
+    api.string_to_utf8_chars(gd_str, level_id, len + 1);
+    level_id[len] = '\0';
+    
+    s32 index = BLB_FindLevelByID(&data->blb, level_id);
+    
+    api.mem_free(level_id);
+    *(int64_t*)r_ret = (int64_t)index;
 }
 
 /* -----------------------------------------------------------------------------
