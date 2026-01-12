@@ -55,16 +55,8 @@ ifdef STAGE
 endif
 
 # Run parallax viewer - PSX-accurate parallax scrolling demo
-parallax: build
+view: build
 	$(GODOT) --path . demo/parallax_viewer.tscn -- $(LEVEL_ARGS)
-
-# Run level viewer - simple level rendering
-level: build
-	$(GODOT) --path . demo/level_viewer.tscn
-
-# Run level scene - interactive viewer with camera controls
-scene: build
-	$(GODOT) --path . demo/level_scene.tscn
 
 # Run with editor (for debugging)
 editor: build
@@ -86,10 +78,8 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  make              Build the GDExtension library"
-	@echo "  make run          Run default scene (parallax_viewer)"
-	@echo "  make parallax     Run parallax viewer (PSX-accurate)"
-	@echo "  make level        Run level viewer (simple)"
-	@echo "  make scene        Run level scene (interactive)"
+	@echo "  make run          Run default scene (view)"
+	@echo "  make view         Run parallax viewer (PSX-accurate)"
 	@echo "  make editor       Open in Godot editor"
 	@echo "  make test         Run unit tests"
 	@echo "  make clean        Clean build artifacts"

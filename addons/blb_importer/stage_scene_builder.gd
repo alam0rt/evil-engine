@@ -12,7 +12,7 @@ const TILE_SIZE := 16
 const TILES_PER_ROW := 32  # Atlas layout
 
 const SpriteFramesBuilder = preload("res://addons/blb_importer/sprite_frames_builder.gd")
-const EntitySprites = preload("res://demo/entity_sprites.gd")
+const EntitySprites = preload("res://addons/blb_importer/game_data/entity_sprites.gd")
 
 var _blb = null  # BLBReader instance for sprite decoding
 

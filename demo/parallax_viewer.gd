@@ -9,7 +9,7 @@ extends Node2D
 ## Scroll factors: 0x10000 (65536) = 1.0 = moves with camera
 ##                 0x8000 (32768) = 0.5 = half-speed parallax
 
-const EntitySpritesClass = preload("res://demo/entity_sprites.gd")
+const EntitySpritesClass = preload("res://addons/blb_importer/game_data/entity_sprites.gd")
 
 const PSX_WIDTH: int = 320
 const PSX_HEIGHT: int = 240
