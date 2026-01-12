@@ -236,8 +236,8 @@ func _extract_single_layer(layer_node: Node) -> Dictionary:
 	
 	# Extract tilemap as flat array
 	var used_rect := tilemap.get_used_rect()
-	var width := layer_dict["width"]
-	var height := layer_dict["height"]
+	var width: int = layer_dict["width"]
+	var height: int = layer_dict["height"]
 	var tilemap_data := []
 	
 	for y in range(height):
@@ -483,9 +483,9 @@ func _pack_tilemaps(layers: Array) -> Array:
 	"""Pack all layer tilemaps"""
 	var tilemaps := []
 	for layer in layers:
-		var tilemap := layer.get("tilemap", [])
-		var width := layer.get("width", 0)
-		var height := layer.get("height", 0)
+		var tilemap: Array = layer.get("tilemap", [])
+		var width: int = layer.get("width", 0)
+		var height: int = layer.get("height", 0)
 		tilemaps.append(_pack_tilemap(tilemap, width, height))
 	return tilemaps
 

@@ -18,7 +18,7 @@
 #   16=SOAR, 17=EGGS, 18=FINN, 19=GLID, 20=KLOG, 21=SNOW, 22=EVIL, 23=RUNN,
 #   24=MEGA, 25=SEVN
 
-.PHONY: all build run parallax level scene clean help
+.PHONY: all build run parallax level scene clean help test
 
 # Default BLB path for testing
 BLB_PATH ?= /home/sam/projects/btm/disks/blb/GAME.BLB
@@ -67,8 +67,13 @@ scene: build
 	$(GODOT) --path . demo/level_scene.tscn
 
 # Run with editor (for debugging)
-editor:
+editor: build
 	$(GODOT) --path . --editor
+
+# Run unit tests
+test: build
+	@echo "Running BLB Importer tests..."
+	$(GODOT) --headless --path . --script addons/blb_importer/blb_reader_test.gd
 
 # Clean build artifacts
 clean:
@@ -86,6 +91,7 @@ help:
 	@echo "  make level        Run level viewer (simple)"
 	@echo "  make scene        Run level scene (interactive)"
 	@echo "  make editor       Open in Godot editor"
+	@echo "  make test         Run unit tests"
 	@echo "  make clean        Clean build artifacts"
 	@echo ""
 	@echo "Environment:"

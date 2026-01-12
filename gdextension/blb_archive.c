@@ -10,8 +10,10 @@
 #include "blb_archive.h"
 #include "api.h"
 #include "class_binding.h"
+#include "gd_helpers.h"
 #include "../src/blb/blb.h"
-#include "../src/render/sprite.h"
+#include "../src/level/level.h"
+#include "../src/evil_engine.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -24,7 +26,9 @@
 
 typedef struct {
     BLBFile blb;
+    LevelContext level;
     int is_open;
+    int level_loaded;
 } BLBArchiveData;
 
 /* -----------------------------------------------------------------------------
@@ -62,6 +66,10 @@ static void blb_archive_free(void* p_class_userdata, GDExtensionClassInstancePtr
     BLBArchiveData* data = (BLBArchiveData*)p_instance;
     
     if (!data) return;
+    
+    if (data->level_loaded) {
+        Level_Unload(&data->level);
+    }
     
     if (data->is_open) {
         BLB_Close(&data->blb);
@@ -550,6 +558,432 @@ static void blb_psx_color_to_rgba_ptrcall(
 }
 
 /* -----------------------------------------------------------------------------
+ * Method: load_level(level_index: int, stage_index: int) -> bool
+ * Load level data from the BLB.
+ * -------------------------------------------------------------------------- */
+
+static void blb_load_level_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->is_open || p_argument_count < 2) {
+        variant_new_bool((GdVariant*)r_return, 0);
+        return;
+    }
+    
+    int64_t level_index = variant_as_int((const GdVariant*)p_args[0]);
+    int64_t stage_index = variant_as_int((const GdVariant*)p_args[1]);
+    
+    /* Unload any existing level */
+    if (data->level_loaded) {
+        Level_Unload(&data->level);
+        data->level_loaded = 0;
+    }
+    
+    /* Initialize and load new level */
+    Level_Init(&data->level);
+    int result = Level_Load(&data->level, &data->blb, (u8)level_index, (u8)stage_index);
+    
+    if (result == 0) {
+        data->level_loaded = 1;
+        variant_new_bool((GdVariant*)r_return, 1);
+    } else {
+        variant_new_bool((GdVariant*)r_return, 0);
+    }
+}
+
+static void blb_load_level_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    (void)p_args;
+    *(int8_t*)r_ret = 0;
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_tile_count() -> int
+ * Get total number of tiles in the loaded level.
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_tile_count_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)p_args;
+    (void)p_argument_count;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->level_loaded) {
+        variant_new_int((GdVariant*)r_return, 0);
+        return;
+    }
+    
+    variant_new_int((GdVariant*)r_return, (int64_t)Level_GetTotalTileCount(&data->level));
+}
+
+static void blb_get_tile_count_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_args;
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    if (data && data->level_loaded) {
+        *(int64_t*)r_ret = (int64_t)Level_GetTotalTileCount(&data->level);
+    } else {
+        *(int64_t*)r_ret = 0;
+    }
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_layer_count() -> int
+ * Get number of layers in the loaded level.
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_layer_count_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)p_args;
+    (void)p_argument_count;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->level_loaded) {
+        variant_new_int((GdVariant*)r_return, 0);
+        return;
+    }
+    
+    variant_new_int((GdVariant*)r_return, (int64_t)data->level.layer_count);
+}
+
+static void blb_get_layer_count_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_args;
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    if (data && data->level_loaded) {
+        *(int64_t*)r_ret = (int64_t)data->level.layer_count;
+    } else {
+        *(int64_t*)r_ret = 0;
+    }
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_background_color() -> Color
+ * Get the level background color.
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_background_color_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)p_args;
+    (void)p_argument_count;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->level_loaded) {
+        variant_new_int((GdVariant*)r_return, 0);
+        return;
+    }
+    
+    u8 r, g, b;
+    Level_GetBackgroundColor(&data->level, &r, &g, &b);
+    
+    /* Return as packed RGBA integer */
+    u32 rgba = ((u32)r) | ((u32)g << 8) | ((u32)b << 16) | 0xFF000000;
+    variant_new_int((GdVariant*)r_return, (int64_t)rgba);
+}
+
+static void blb_get_background_color_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_args;
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    if (data && data->level_loaded) {
+        u8 r, g, b;
+        Level_GetBackgroundColor(&data->level, &r, &g, &b);
+        u32 rgba = ((u32)r) | ((u32)g << 8) | ((u32)b << 16) | 0xFF000000;
+        *(int64_t*)r_ret = (int64_t)rgba;
+    } else {
+        *(int64_t*)r_ret = 0;
+    }
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: render_tile(tile_index: int) -> PackedByteArray
+ * Render a single tile to RGBA pixels.
+ * Returns 16x16 or 8x8 RGBA data (1024 or 256 bytes).
+ * -------------------------------------------------------------------------- */
+
+static void blb_render_tile_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->level_loaded || p_argument_count < 1) {
+        variant_new_packed_byte_array((GdVariant*)r_return);
+        return;
+    }
+    
+    int64_t tile_index = variant_as_int((const GdVariant*)p_args[0]);
+    
+    /* Get tile data */
+    int is_8x8 = 0;
+    const u8* pixels = Level_GetTilePixels(&data->level, (u16)tile_index, &is_8x8);
+    const u16* palette = Level_GetTilePalette(&data->level, (u16)tile_index);
+    
+    if (!pixels || !palette) {
+        variant_new_packed_byte_array((GdVariant*)r_return);
+        return;
+    }
+    
+    /* Determine tile size */
+    int size = is_8x8 ? 8 : 16;
+    int pixel_count = size * size;
+    int rgba_size = pixel_count * 4;
+    
+    /* Allocate output buffer */
+    u8* rgba_data = (u8*)api.mem_alloc(rgba_size);
+    if (!rgba_data) {
+        variant_new_packed_byte_array((GdVariant*)r_return);
+        return;
+    }
+    
+    /* Convert indexed pixels to RGBA */
+    for (int i = 0; i < pixel_count; i++) {
+        u8 color_index = pixels[i];
+        u16 psx_color = palette[color_index];
+        u32 rgba = EvilEngine_PSXColorToRGBA(psx_color);
+        
+        /* Handle transparency (color index 0 or PSX color 0x0000) */
+        if (color_index == 0 && psx_color == 0) {
+            rgba = 0; /* Fully transparent */
+        }
+        
+        rgba_data[i * 4 + 0] = (rgba >> 0) & 0xFF;  /* R */
+        rgba_data[i * 4 + 1] = (rgba >> 8) & 0xFF;  /* G */
+        rgba_data[i * 4 + 2] = (rgba >> 16) & 0xFF; /* B */
+        rgba_data[i * 4 + 3] = (rgba >> 24) & 0xFF; /* A */
+    }
+    
+    variant_new_packed_byte_array_from_data((GdVariant*)r_return, rgba_data, rgba_size);
+    api.mem_free(rgba_data);
+}
+
+static void blb_render_tile_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    (void)p_args;
+    (void)r_ret;
+    /* Not implemented for ptrcall */
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_tile_size(tile_index: int) -> int
+ * Returns 8 or 16 depending on tile size.
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_tile_size_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->level_loaded || p_argument_count < 1) {
+        variant_new_int((GdVariant*)r_return, 16);
+        return;
+    }
+    
+    int64_t tile_index = variant_as_int((const GdVariant*)p_args[0]);
+    u8 flags = Level_GetTileFlags(&data->level, (u16)tile_index);
+    
+    variant_new_int((GdVariant*)r_return, (flags & 0x02) ? 8 : 16);
+}
+
+static void blb_get_tile_size_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    if (data && data->level_loaded && p_args) {
+        int64_t tile_index = *(const int64_t*)p_args[0];
+        u8 flags = Level_GetTileFlags(&data->level, (u16)tile_index);
+        *(int64_t*)r_ret = (flags & 0x02) ? 8 : 16;
+    } else {
+        *(int64_t*)r_ret = 16;
+    }
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_layer_tilemap(layer_index: int) -> PackedInt32Array
+ * Get the tilemap data for a layer.
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_layer_tilemap_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->level_loaded || p_argument_count < 1) {
+        variant_new_packed_byte_array((GdVariant*)r_return);
+        return;
+    }
+    
+    int64_t layer_index = variant_as_int((const GdVariant*)p_args[0]);
+    const LayerEntry* layer = Level_GetLayer(&data->level, (u32)layer_index);
+    const u16* tilemap = Level_GetLayerTilemap(&data->level, (u32)layer_index);
+    
+    if (!layer || !tilemap) {
+        variant_new_packed_byte_array((GdVariant*)r_return);
+        return;
+    }
+    
+    /* Return tilemap as packed byte array (u16 values) */
+    int count = layer->width * layer->height;
+    variant_new_packed_byte_array_from_data((GdVariant*)r_return, 
+        (const u8*)tilemap, count * sizeof(u16));
+}
+
+static void blb_get_layer_tilemap_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    (void)p_args;
+    (void)r_ret;
+}
+
+/* -----------------------------------------------------------------------------
+ * Method: get_layer_info(layer_index: int) -> Dictionary
+ * Get layer metadata.
+ * -------------------------------------------------------------------------- */
+
+static void blb_get_layer_info_call(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstVariantPtr* p_args,
+    GDExtensionInt p_argument_count,
+    GDExtensionVariantPtr r_return,
+    GDExtensionCallError* r_error
+) {
+    (void)method_userdata;
+    (void)r_error;
+    
+    BLBArchiveData* data = (BLBArchiveData*)p_instance;
+    
+    if (!data || !data->level_loaded || p_argument_count < 1) {
+        variant_new_nil((GdVariant*)r_return);
+        return;
+    }
+    
+    int64_t layer_index = variant_as_int((const GdVariant*)p_args[0]);
+    const LayerEntry* layer = Level_GetLayer(&data->level, (u32)layer_index);
+    
+    if (!layer) {
+        variant_new_nil((GdVariant*)r_return);
+        return;
+    }
+    
+    /* Build a dictionary with layer info using gd_helpers */
+    gd_variant_new_dictionary(r_return);
+    gd_dict_set_int(r_return, "width", layer->width);
+    gd_dict_set_int(r_return, "height", layer->height);
+    gd_dict_set_int(r_return, "scroll_x", layer->scroll_x);
+    gd_dict_set_int(r_return, "scroll_y", layer->scroll_y);
+    gd_dict_set_int(r_return, "layer_type", layer->layer_type);
+}
+
+static void blb_get_layer_info_ptrcall(
+    void* method_userdata,
+    GDExtensionClassInstancePtr p_instance,
+    const GDExtensionConstTypePtr* p_args,
+    GDExtensionTypePtr r_ret
+) {
+    (void)method_userdata;
+    (void)p_instance;
+    (void)p_args;
+    (void)r_ret;
+}
+
+/* -----------------------------------------------------------------------------
  * Class Registration
  * -------------------------------------------------------------------------- */
 
@@ -629,6 +1063,61 @@ void register_blb_archive_class(GDExtensionClassLibraryPtr p_library) {
         blb_psx_color_to_rgba_call, blb_psx_color_to_rgba_ptrcall,
         GDEXTENSION_VARIANT_TYPE_INT,
         "psx_color", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    /* Level loading and rendering methods */
+    bind_method_2_r(
+        CLASS_NAME, "load_level",
+        blb_load_level_call, blb_load_level_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_BOOL,
+        "level_index", GDEXTENSION_VARIANT_TYPE_INT,
+        "stage_index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_0_r(
+        CLASS_NAME, "get_tile_count",
+        blb_get_tile_count_call, blb_get_tile_count_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_0_r(
+        CLASS_NAME, "get_layer_count",
+        blb_get_layer_count_call, blb_get_layer_count_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_0_r(
+        CLASS_NAME, "get_background_color",
+        blb_get_background_color_call, blb_get_background_color_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "render_tile",
+        blb_render_tile_call, blb_render_tile_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY,
+        "tile_index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "get_tile_size",
+        blb_get_tile_size_call, blb_get_tile_size_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_INT,
+        "tile_index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "get_layer_tilemap",
+        blb_get_layer_tilemap_call, blb_get_layer_tilemap_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY,
+        "layer_index", GDEXTENSION_VARIANT_TYPE_INT
+    );
+    
+    bind_method_1_r(
+        CLASS_NAME, "get_layer_info",
+        blb_get_layer_info_call, blb_get_layer_info_ptrcall,
+        GDEXTENSION_VARIANT_TYPE_DICTIONARY,
+        "layer_index", GDEXTENSION_VARIANT_TYPE_INT
     );
 }
 
