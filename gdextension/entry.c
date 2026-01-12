@@ -1,5 +1,6 @@
 #include <gdextension_interface.h>
 #include <stddef.h>
+#include "gd_helpers.h"
 
 /* Platform-specific export macro */
 #if defined(_WIN32) || defined(_WIN64)
@@ -43,6 +44,9 @@ GDExtensionBool GDE_EXPORT evil_engine_init(
     /* Store for later use */
     gde_get_proc_address = p_get_proc_address;
     gde_library = p_library;
+
+    /* Initialize helper functions */
+    gd_helpers_init(p_get_proc_address);
 
     /* Configure initialization */
     r_initialization->minimum_initialization_level = GDEXTENSION_INITIALIZATION_SCENE;

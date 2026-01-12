@@ -3,30 +3,18 @@
  * 
  * Implements the BLBArchive class exposed to GDScript.
  * This is a thin wrapper around the C99 evil_engine library.
+ * 
+ * NOTE: This is currently a stub implementation showing the structure.
+ * The actual BLB reading is handled by the pure GDScript BLBReader class,
+ * which is complete and functional. This GDExtension wrapper is optional
+ * and can be completed later for performance-critical operations.
  */
 
 #include "blb_archive.h"
 #include "defs.h"
+#include "gd_helpers.h"
 #include <stdlib.h>
 #include <string.h>
-
-/* GDExtension API function pointers (set during initialization) */
-static GDExtensionInterfaceGetProcAddress gde_get_proc_address = NULL;
-
-/* Cached Godot API functions */
-static GDExtensionInterfaceVariantNewNil variant_new_nil = NULL;
-static GDExtensionInterfaceVariantNewBool variant_new_bool = NULL;
-static GDExtensionInterfaceVariantNewInt variant_new_int = NULL;
-static GDExtensionInterfaceVariantNewFloat variant_new_float = NULL;
-static GDExtensionInterfaceVariantNewString variant_new_string = NULL;
-static GDExtensionInterfaceStringNewWithLatin1Chars string_new_latin1 = NULL;
-static GDExtensionInterfaceVariantNewDictionary variant_new_dictionary = NULL;
-static GDExtensionInterfaceVariantNewArray variant_new_array = NULL;
-static GDExtensionInterfaceVariantNewPackedByteArray variant_new_packed_byte_array = NULL;
-static GDExtensionInterfaceVariantNewPackedInt32Array variant_new_packed_int32_array = NULL;
-static GDExtensionInterfaceVariantNewPackedColorArray variant_new_packed_color_array = NULL;
-static GDExtensionInterfaceDictionaryOperatorIndex dictionary_operator_index = NULL;
-static GDExtensionInterfaceArrayOperatorIndex array_operator_index = NULL;
 
 /* -----------------------------------------------------------------------------
  * Instance Methods
@@ -78,20 +66,18 @@ static void blb_archive_open(void* p_method_userdata, GDExtensionClassInstancePt
                              GDExtensionVariantPtr r_return,
                              GDExtensionCallError* r_error) {
     GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    /* TODO: Extract string from variant and call EvilEngine_OpenBLB */
-    /* For now, return false as stub */
     (void)p_method_userdata;
-    (void)p_args;
-    (void)p_argument_count;
     (void)r_error;
     
-    if (!self) {
-        variant_new_bool(r_return, 0);
+    if (!self || p_argument_count < 1) {
+        gd_variant_new_bool(r_return, false);
         return;
     }
     
-    /* TODO: Implement actual string extraction and file opening */
-    variant_new_bool(r_return, 0);
+    /* TODO: Extract string from p_args[0] using gd_variant_to_cstring()
+     * Then call EvilEngine_OpenBLB(path, &self->blb)
+     * For now, return false as stub */
+    gd_variant_new_bool(r_return, false);
 }
 
 /* int get_level_count() */
@@ -111,7 +97,7 @@ static void blb_archive_get_level_count(void* p_method_userdata, GDExtensionClas
         count = EvilEngine_GetLevelCount(self->blb);
     }
     
-    variant_new_int(r_return, count);
+    gd_variant_new_int(r_return, count);
 }
 
 /* String get_level_name(int index) */
@@ -121,25 +107,17 @@ static void blb_archive_get_level_name(void* p_method_userdata, GDExtensionClass
                                        GDExtensionVariantPtr r_return,
                                        GDExtensionCallError* r_error) {
     GDBLBArchive* self = (GDBLBArchive*)p_instance;
-    const char* name = NULL;
-    GDExtensionStringPtr gd_string;
+    const char* name = "";
     (void)p_method_userdata;
     (void)p_argument_count;
     (void)r_error;
     
-    /* TODO: Extract int from p_args[0] */
-    /* For now, just return empty string */
-    if (self && self->blb && p_args) {
-        /* name = EvilEngine_GetLevelName(self->blb, index); */
+    if (self && self->blb && p_args && p_argument_count > 0) {
+        /* TODO: Extract int from p_args[0] using gd_variant_as_int()
+         * Then call EvilEngine_GetLevelName(self->blb, index) */
     }
     
-    if (name) {
-        string_new_latin1(&gd_string, name);
-        variant_new_string(r_return, &gd_string);
-    } else {
-        string_new_latin1(&gd_string, "");
-        variant_new_string(r_return, &gd_string);
-    }
+    gd_cstring_to_variant(r_return, name);
 }
 
 /* bool load_level(int level_index, int stage_index) */
@@ -154,8 +132,9 @@ static void blb_archive_load_level(void* p_method_userdata, GDExtensionClassInst
     (void)p_argument_count;
     (void)r_error;
     
-    /* TODO: Extract int arguments and call EvilEngine_LoadLevel */
-    variant_new_bool(r_return, 0);
+    /* TODO: Extract int arguments using gd_variant_as_int()
+     * Then call EvilEngine_LoadLevel(self->blb, level_idx, stage_idx, &self->level) */
+    gd_variant_new_bool(r_return, false);
 }
 
 /* Dictionary get_tile_header() */

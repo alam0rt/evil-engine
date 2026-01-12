@@ -3,8 +3,11 @@ extends EditorImportPlugin
 ## BLB Archive Import Plugin
 ##
 ## Automatically imports .BLB files as PackedScenes when added to Godot project.
-## Uses the BLBArchive GDExtension class to read BLB data and convert to
-## native Godot resources (TileSet, TileMapLayer, Entities, etc.).
+## Uses the BLBReader to read BLB data and convert to native Godot resources
+## (TileSet, TileMapLayer, Entities, etc.).
+
+const BLBReader = preload("res://addons/blb_importer/blb_reader.gd")
+const BLBStageSceneBuilder = preload("res://addons/blb_importer/blb_stage_scene_builder.gd")
 
 func _get_importer_name() -> String:
 	return "blb_archive"
@@ -85,43 +88,50 @@ func _import(source_file: String, save_path: String, options: Dictionary,
 	print("[BLB Importer] Importing: ", source_file)
 	print("[BLB Importer] Options: ", options)
 	
-	# NOTE: This is a stub implementation
-	# The full implementation would:
-	# 1. Create BLBArchive instance (from GDExtension)
-	# 2. Open the BLB file
-	# 3. Load the specified level/stage
-	# 4. Use converter classes to build the scene
-	# 5. Save as PackedScene
+	# Open BLB file
+	var blb := BLBReader.new()
+	if not blb.open(source_file):
+		push_error("[BLB Importer] Failed to open BLB file: ", source_file)
+		return ERR_FILE_CANT_OPEN
 	
-	# For now, create a placeholder scene
-	var root := Node2D.new()
-	root.name = "Level_Placeholder"
+	var level_index: int = options.get("level_index", 0)
+	var stage_index: int = options.get("stage_index", 0)
+	var import_all: bool = options.get("import_all_levels", false)
 	
-	# Add a label explaining what's needed
-	var label := Label.new()
-	label.text = "BLB Import Placeholder\n\nTo complete implementation:\n" + \
-	             "1. Finish GDExtension BLBArchive class\n" + \
-	             "2. Implement converter classes\n" + \
-	             "3. Build scene from BLB data"
-	label.position = Vector2(50, 50)
-	root.add_child(label)
-	label.owner = root
+	# Validate indices
+	if level_index >= blb.get_level_count():
+		push_error("[BLB Importer] Invalid level index: ", level_index)
+		return ERR_INVALID_PARAMETER
 	
-	# Pack and save the scene
-	var packed_scene := PackedScene.new()
-	var result := packed_scene.pack(root)
+	if stage_index >= blb.get_stage_count(level_index):
+		push_error("[BLB Importer] Invalid stage index: ", stage_index)
+		return ERR_INVALID_PARAMETER
 	
-	if result != OK:
-		push_error("[BLB Importer] Failed to pack scene")
-		return result
+	# Load stage data
+	var stage_data := blb.load_stage(level_index, stage_index)
+	if stage_data.is_empty():
+		push_error("[BLB Importer] Failed to load stage data")
+		return ERR_FILE_CORRUPT
 	
+	# Build scene
+	var builder := BLBStageSceneBuilder.new()
+	var packed_scene := builder.build_scene(stage_data, blb)
+	
+	if not packed_scene:
+		push_error("[BLB Importer] Failed to build scene from BLB data")
+		return ERR_CANT_CREATE
+	
+	# Save scene
 	var output_path := "%s.%s" % [save_path, _get_save_extension()]
-	result = ResourceSaver.save(packed_scene, output_path)
+	var result := ResourceSaver.save(packed_scene, output_path)
 	
 	if result != OK:
 		push_error("[BLB Importer] Failed to save scene to: ", output_path)
 		return result
 	
-	print("[BLB Importer] Successfully imported to: ", output_path)
+	print("[BLB Importer] Successfully imported: %s (Level %d, Stage %d)" % [
+		blb.get_level_name(level_index), level_index, stage_index
+	])
+	
 	return OK
 

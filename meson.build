@@ -31,6 +31,8 @@ game_files = files(
 gdext_files = files(
   'gdextension/entry.c',
   'gdextension/engine_node.c',
+  'gdextension/blb_archive.c',
+  'gdextension/gd_helpers.c',
 )
 
 # Build standalone library (can be used by CLI tools)
