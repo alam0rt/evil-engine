@@ -19,9 +19,10 @@ extends Node2D
 @export var secondary_sector: int = 0
 @export var tertiary_sector: int = 0
 
-## Tile header data
+## Tile header data (36 bytes total)
 @export_group("Tile Header (Asset 100)")
 @export var bg_color: Color = Color.BLACK
+@export var fog_color: Color = Color.BLACK
 @export var level_width: int = 0
 @export var level_height: int = 0
 @export var spawn_x: int = 0
@@ -29,7 +30,15 @@ extends Node2D
 @export var count_16x16: int = 0
 @export var count_8x8: int = 0
 @export var count_extra: int = 0
+@export var vehicle_waypoints: int = 0
+@export var level_flags: int = 0
+@export var special_level_id: int = 0
+@export var vram_rect_count: int = 0
 @export var entity_count: int = 0
+
+@export_group("Raw Data (Unknown/Padding)")
+@export var field_20: int = 0
+@export var padding_22: int = 0
 
 
 func _ready() -> void:

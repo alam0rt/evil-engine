@@ -17,15 +17,18 @@ class_name BLBBrowserDock
 
 const BLBReader = preload("res://addons/blb_importer/blb_reader.gd")
 const BLBStageSceneBuilder = preload("res://addons/blb_importer/blb_stage_scene_builder.gd")
+const BLBExporter = preload("res://addons/blb_importer/exporters/blb_exporter.gd")
 
 var _blb: BLBReader = null
 var _blb_path: String = ""
+var _current_scene_path: String = ""
 
 # UI elements
 var _vbox: VBoxContainer
 var _toolbar: HBoxContainer
 var _open_button: Button
 var _refresh_button: Button
+var _export_button: Button
 var _path_label: Label
 var _tree: Tree
 var _status_label: Label
@@ -61,6 +64,12 @@ func _build_ui() -> void:
 	_refresh_button.pressed.connect(_on_refresh_pressed)
 	_refresh_button.disabled = true
 	_toolbar.add_child(_refresh_button)
+	
+	_export_button = Button.new()
+	_export_button.text = "Export to BLB..."
+	_export_button.pressed.connect(_on_export_pressed)
+	_export_button.disabled = true
+	_toolbar.add_child(_export_button)
 	
 	# Path label
 	_path_label = Label.new()
@@ -218,4 +227,61 @@ func _open_stage(level_idx: int, stage_idx: int, level_id: String) -> void:
 	# Open the scene in editor
 	EditorInterface.open_scene_from_path(scene_path)
 	
+	# Store current scene path for export
+	_current_scene_path = scene_path
+	_export_button.disabled = false
+	
 	_status_label.text = "Opened: %s" % scene_name
+
+
+func _on_export_pressed() -> void:
+	"""Handle export button press"""
+	var current_scene := EditorInterface.get_edited_scene_root()
+	if not current_scene:
+		push_error("[BLB Browser] No scene open for export")
+		_status_label.text = "Error: No scene open"
+		return
+	
+	var dialog := EditorFileDialog.new()
+	dialog.file_mode = EditorFileDialog.FILE_MODE_SAVE_FILE
+	dialog.access = EditorFileDialog.ACCESS_FILESYSTEM
+	dialog.add_filter("*.BLB,*.blb", "BLB Archives")
+	dialog.file_selected.connect(_on_export_file_selected)
+	dialog.title = "Export to BLB"
+	
+	# Add to editor interface to show properly
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.popup_centered_ratio(0.7)
+
+
+func _on_export_file_selected(path: String) -> void:
+	"""Handle export file selection"""
+	_status_label.text = "Exporting..."
+	
+	# Get current scene path
+	var current_scene := EditorInterface.get_edited_scene_root()
+	if not current_scene:
+		_status_label.text = "Error: No scene to export"
+		return
+	
+	# Save current scene first
+	var result := EditorInterface.save_scene()
+	if result != OK:
+		_status_label.text = "Error: Failed to save scene"
+		return
+	
+	var scene_path := current_scene.scene_file_path
+	if scene_path.is_empty():
+		_status_label.text = "Error: Scene not saved"
+		return
+	
+	# Export using BLBExporter
+	var exporter := BLBExporter.new()
+	result = exporter.export_scene_to_blb(scene_path, path)
+	
+	if result == OK:
+		_status_label.text = "Successfully exported to: %s" % path.get_file()
+		print("[BLB Browser] Exported BLB to: ", path)
+	else:
+		_status_label.text = "Export failed (see console for details)"
+		push_error("[BLB Browser] Export failed with error: ", result)

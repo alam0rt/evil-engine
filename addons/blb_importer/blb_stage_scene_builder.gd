@@ -74,7 +74,7 @@ func build_scene(stage_data: Dictionary, blb = null) -> PackedScene:
 	root.set_script(BLBStageRoot)
 	root.name = "%s_Stage%d" % [stage_data.get("level_id", "UNKN"), stage_data.get("stage_index", 0) + 1]
 	
-	# Set root properties
+	# Set root properties - ALL TileHeader fields
 	root.level_id = stage_data.get("level_id", "")
 	root.level_name = stage_data.get("level_name", "")
 	root.level_index = stage_data.get("level_index", 0)
@@ -84,6 +84,11 @@ func build_scene(stage_data: Dictionary, blb = null) -> PackedScene:
 		tile_header.get("bg_g", 0),
 		tile_header.get("bg_b", 0)
 	)
+	root.fog_color = Color8(
+		tile_header.get("fog_r", 0),
+		tile_header.get("fog_g", 0),
+		tile_header.get("fog_b", 0)
+	)
 	root.level_width = tile_header.get("level_width", 0)
 	root.level_height = tile_header.get("level_height", 0)
 	root.spawn_x = tile_header.get("spawn_x", 0)
@@ -91,7 +96,13 @@ func build_scene(stage_data: Dictionary, blb = null) -> PackedScene:
 	root.count_16x16 = count_16x16
 	root.count_8x8 = count_8x8
 	root.count_extra = count_extra
+	root.vehicle_waypoints = tile_header.get("vehicle_waypoints", 0)
+	root.level_flags = tile_header.get("level_flags", 0)
+	root.special_level_id = tile_header.get("special_level_id", 0)
+	root.vram_rect_count = tile_header.get("vram_rect_count", 0)
 	root.entity_count = entities.size()
+	root.field_20 = tile_header.get("field_20", 0)
+	root.padding_22 = tile_header.get("padding_22", 0)
 	
 	# Add background
 	_add_background(root, tile_header)
@@ -294,14 +305,31 @@ func _add_layer_container(root: Node2D, layers: Array, tilemaps: Array, tileset:
 		layer.name = "Layer_%d" % layer_idx
 		layer.tile_set = tileset
 		
-		# Set layer properties
+		# Set layer properties - ALL LayerEntry fields
 		layer.layer_index = layer_idx
 		layer.map_width = layer_data.get("width", 0)
 		layer.map_height = layer_data.get("height", 0)
+		layer.level_width = layer_data.get("level_width", 0)
+		layer.level_height = layer_data.get("level_height", 0)
 		layer.x_offset = layer_data.get("x_offset", 0)
 		layer.y_offset = layer_data.get("y_offset", 0)
+		layer.render_param = layer_data.get("render_param", 0)
 		layer.scroll_x = layer_data.get("scroll_x", 0x10000)
 		layer.scroll_y = layer_data.get("scroll_y", 0x10000)
+		layer.render_field_30 = layer_data.get("render_field_30", 0)
+		layer.render_field_32 = layer_data.get("render_field_32", 0)
+		layer.render_field_3a = layer_data.get("render_field_3a", 0)
+		layer.render_field_3b = layer_data.get("render_field_3b", 0)
+		layer.scroll_left_enable = layer_data.get("scroll_left_enable", 0)
+		layer.scroll_right_enable = layer_data.get("scroll_right_enable", 0)
+		layer.scroll_up_enable = layer_data.get("scroll_up_enable", 0)
+		layer.scroll_down_enable = layer_data.get("scroll_down_enable", 0)
+		layer.render_mode_h = layer_data.get("render_mode_h", 0)
+		layer.render_mode_v = layer_data.get("render_mode_v", 0)
+		layer.layer_type = layer_data.get("layer_type", 0)
+		layer.skip_render = layer_data.get("skip_render", 0)
+		layer.unknown_2a = layer_data.get("unknown_2a", 0)
+		layer.color_tints = layer_data.get("color_tints", PackedColorArray())
 		layer.layer_flags = layer_data.get("flags", 0)
 		layer.tilemap_index = tilemap_idx
 		
@@ -347,7 +375,7 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 		entity.set_script(BLBEntity)
 		entity.name = "Entity_%d_T%d" % [i, entity_data.get("entity_type", 0)]
 		
-		# Set entity properties
+		# Set entity properties - ALL EntityDef fields
 		entity.entity_index = i
 		entity.x1 = entity_data.get("x1", 0)
 		entity.y1 = entity_data.get("y1", 0)
@@ -355,9 +383,12 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 		entity.y2 = entity_data.get("y2", 0)
 		entity.x_center = entity_data.get("x_center", 0)
 		entity.y_center = entity_data.get("y_center", 0)
-		entity.entity_type = entity_data.get("entity_type", 0)
 		entity.variant = entity_data.get("variant", 0)
+		entity.padding1 = entity_data.get("padding1", 0)
+		entity.padding2 = entity_data.get("padding2", 0)
+		entity.entity_type = entity_data.get("entity_type", 0)
 		entity.layer = entity_data.get("layer", 0)
+		entity.padding3 = entity_data.get("padding3", 0)
 		
 		# Position at center
 		entity.position = Vector2(entity.x_center, entity.y_center)

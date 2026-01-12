@@ -34,6 +34,12 @@ extends Node2D
 ## Reference to sprite (if loaded)
 @export var sprite_id: int = -1
 
+## Raw data fields (padding bytes in BLB format)
+@export_group("Raw Data (Padding)")
+@export var padding1: int = 0
+@export var padding2: int = 0
+@export var padding3: int = 0
+
 
 func get_bounds() -> Rect2:
 	return Rect2(x1, y1, x2 - x1, y2 - y1)

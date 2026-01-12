@@ -241,6 +241,9 @@ func _parse_tile_header(data: PackedByteArray) -> Dictionary:
 		"bg_r": data[0],
 		"bg_g": data[1],
 		"bg_b": data[2],
+		"fog_r": data[4],
+		"fog_g": data[5],
+		"fog_b": data[6],
 		"level_width": _read_u16_from(data, 8),
 		"level_height": _read_u16_from(data, 10),
 		"spawn_x": _read_u16_from(data, 12),
@@ -248,7 +251,13 @@ func _parse_tile_header(data: PackedByteArray) -> Dictionary:
 		"count_16x16": _read_u16_from(data, 16),
 		"count_8x8": _read_u16_from(data, 18),
 		"count_extra": _read_u16_from(data, 20),
-		"entity_count": _read_u16_from(data, 30),
+		"vehicle_waypoints": _read_u16_from(data, 0x16),
+		"level_flags": _read_u16_from(data, 0x18),
+		"special_level_id": _read_u16_from(data, 0x1A),
+		"vram_rect_count": _read_u16_from(data, 0x1C),
+		"entity_count": _read_u16_from(data, 0x1E),
+		"field_20": _read_u16_from(data, 0x20),
+		"padding_22": _read_u16_from(data, 0x22),
 	}
 
 
@@ -304,11 +313,33 @@ func _parse_layer_entries(data: PackedByteArray) -> Array[Dictionary]:
 			"y_offset": _read_u16_from(data, offset + 2),
 			"width": _read_u16_from(data, offset + 4),
 			"height": _read_u16_from(data, offset + 6),
-			"scroll_x": _read_u32_from(data, offset + 16) / 65536.0,  # Fixed point
-			"scroll_y": _read_u32_from(data, offset + 20) / 65536.0,
-			"layer_type": data[offset + 38],
-			"skip_render": _read_u16_from(data, offset + 40),
+			"level_width": _read_u16_from(data, offset + 8),
+			"level_height": _read_u16_from(data, offset + 10),
+			"render_param": _read_u32_from(data, offset + 0x0C),
+			"scroll_x": _read_u32_from(data, offset + 0x10),
+			"scroll_y": _read_u32_from(data, offset + 0x14),
+			"render_field_30": _read_u16_from(data, offset + 0x18),
+			"render_field_32": _read_u16_from(data, offset + 0x1A),
+			"render_field_3a": data[offset + 0x1C],
+			"render_field_3b": data[offset + 0x1D],
+			"scroll_left_enable": data[offset + 0x1E],
+			"scroll_right_enable": data[offset + 0x1F],
+			"scroll_up_enable": data[offset + 0x20],
+			"scroll_down_enable": data[offset + 0x21],
+			"render_mode_h": _read_u16_from(data, offset + 0x22),
+			"render_mode_v": _read_u16_from(data, offset + 0x24),
+			"layer_type": data[offset + 0x26],
+			"skip_render": _read_u16_from(data, offset + 0x28),
+			"unknown_2a": _read_u16_from(data, offset + 0x2A),
 		}
+		
+		# Parse color tints (16 RGB entries starting at 0x2C)
+		var color_tints := PackedColorArray()
+		for c in range(16):
+			var tint_offset := offset + 0x2C + c * 3
+			if tint_offset + 3 <= data.size():
+				color_tints.append(Color8(data[tint_offset], data[tint_offset + 1], data[tint_offset + 2]))
+		layer["color_tints"] = color_tints
 		
 		# Skip layers marked as skip
 		layer["skip"] = layer.layer_type == 3 or layer.skip_render != 0
@@ -370,8 +401,11 @@ func _parse_entities(data: PackedByteArray) -> Array[Dictionary]:
 			"x_center": _read_u16_from(data, offset + 8),
 			"y_center": _read_u16_from(data, offset + 10),
 			"variant": _read_u16_from(data, offset + 12),
+			"padding1": _read_u16_from(data, offset + 14),
+			"padding2": _read_u16_from(data, offset + 16),
 			"entity_type": _read_u16_from(data, offset + 18),
 			"layer": _read_u16_from(data, offset + 20),
+			"padding3": _read_u16_from(data, offset + 22),
 		})
 	
 	return entities
