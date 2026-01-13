@@ -292,7 +292,13 @@ func _add_tile_layers(root: Node2D, layers: Array, tilemaps: Array,
 
 
 func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
-	"""Add entity nodes with animated sprites where possible"""
+	"""Add entity nodes using BLBEntityBase scene structure
+	
+	Following Godot best practices (scene organization):
+	- Each entity is a self-contained node with script extending BLBEntityBase
+	- Sprite is a child of the entity node
+	- Loose coupling via signals (collected, player_damaged, etc.)
+	"""
 	
 	var entities_container := Node2D.new()
 	entities_container.name = "Entities"
@@ -309,28 +315,32 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 	
 	print("[StageSceneBuilder] Sprite ID lookup: %d sprites indexed" % sprite_by_id.size())
 	
+	# Preload registry for entity creation
+	var EntityRegistry = preload("res://addons/blb_importer/entity_callbacks/entity_callback_registry.gd")
+	
 	for i in range(entities.size()):
-		var entity: Dictionary = entities[i]
-		var entity_type: int = entity.get("entity_type", 0)
+		var entity_def: Dictionary = entities[i]
+		var entity_type: int = entity_def.get("entity_type", 0)
 		
-		# Create a Node2D container for the entity
-		var entity_node := Node2D.new()
+		# Create entity node using registry (gets proper script attached)
+		var entity_node: Node2D = EntityRegistry.create_entity_node(entity_type)
 		entity_node.name = "Entity_%d_T%d" % [i, entity_type]
 		entity_node.position = Vector2(
-			entity.get("x_center", 0),
-			entity.get("y_center", 0)
+			entity_def.get("x_center", 0),
+			entity_def.get("y_center", 0)
 		)
 		
-		# Store entity data as metadata
-		entity_node.set_meta("entity_type", entity_type)
-		entity_node.set_meta("variant", entity.get("variant", 0))
-		entity_node.set_meta("layer", entity.get("layer", 0))
-		entity_node.set_meta("bounds", Rect2(
-			entity.get("x1", 0),
-			entity.get("y1", 0),
-			entity.get("x2", 0) - entity.get("x1", 0),
-			entity.get("y2", 0) - entity.get("y1", 0)
-		))
+		# Set exported properties (BLBEntityBase exports)
+		entity_node.entity_type = entity_type
+		entity_node.variant = entity_def.get("variant", 0)
+		entity_node.layer = entity_def.get("layer", 0)
+		entity_node.bounds = Rect2(
+			entity_def.get("x1", 0),
+			entity_def.get("y1", 0),
+			entity_def.get("x2", 0) - entity_def.get("x1", 0),
+			entity_def.get("y2", 0) - entity_def.get("y1", 0)
+		)
+		entity_node.entity_index = i
 		
 		# Look up sprite using EntitySprites mapping
 		var target_sprite_id = EntitySprites.get_sprite_id(entity_type)
@@ -340,7 +350,6 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 			sprite = sprite_by_id[target_sprite_id]
 		
 		if not sprite.is_empty() and _blb != null:
-			
 			# Create AnimatedSprite2D with all animations
 			var anim_sprite := AnimatedSprite2D.new()
 			anim_sprite.name = "Sprite"
@@ -359,10 +368,10 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 			# Fallback: create a simple colored rect as placeholder
 			var placeholder := ColorRect.new()
 			placeholder.name = "Placeholder"
-			placeholder.color = Color(1, 0.5, 0, 0.7)  # Orange semi-transparent
+			placeholder.color = EntitySprites.get_color(entity_type)
 			placeholder.size = Vector2(
-				entity.get("x2", 16) - entity.get("x1", 0),
-				entity.get("y2", 16) - entity.get("y1", 0)
+				max(8, entity_def.get("x2", 16) - entity_def.get("x1", 0)),
+				max(8, entity_def.get("y2", 16) - entity_def.get("y1", 0))
 			)
 			placeholder.position = -placeholder.size / 2  # Center it
 			entity_node.add_child(placeholder)
@@ -370,7 +379,7 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 			
 			# Add a label showing entity type
 			var label := Label.new()
-			label.text = str(entity_type)
+			label.text = EntitySprites.get_short_name(entity_type)
 			label.add_theme_font_size_override("font_size", 8)
 			label.position = Vector2(-8, -16)
 			entity_node.add_child(label)

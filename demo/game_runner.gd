@@ -85,6 +85,25 @@ var active_entities: Array[Dictionary] = []
 # Layer data
 var layers: Array[Dictionary] = []
 
+# Tile collision (Asset 500 - see btm/docs/systems/collision.md)
+# Attribute values: 0x00=empty, 0x02=solid, 0x5B=platform, 0x53=checkpoint
+var tile_attributes: PackedByteArray = PackedByteArray()
+var tile_attr_width: int = 0  # Level width in tiles
+var tile_attr_height: int = 0  # Level height in tiles
+
+# Collision attribute constants (from btm/docs/systems/collision.md)
+const TILE_EMPTY: int = 0x00
+const TILE_SOLID: int = 0x02
+const TILE_CHECKPOINT: int = 0x53
+const TILE_PLATFORM: int = 0x5B  # One-way platform (CLOU clouds)
+const TILE_SPAWN_ZONE: int = 0x65
+
+# Physics constants (estimated - see btm/docs/systems/player-physics.md)
+const WALK_SPEED: float = 2.0       # pixels/frame
+const JUMP_VELOCITY: float = -6.0   # initial upward velocity
+const GRAVITY: float = 0.4          # pixels/frame²
+const MAX_FALL_SPEED: float = 8.0   # terminal velocity
+
 # Player state (mirrors GameState+0x116/0x118)
 var player: Dictionary = {
 	"x": 0.0,           # Pixel position (GameState+0x116)
@@ -334,11 +353,23 @@ func _init_player_spawn_position(stage_data: Dictionary) -> void:
 	var spawn_tile_x = tile_header.get("spawn_x", 0)
 	var spawn_tile_y = tile_header.get("spawn_y", 0)
 	
+	# Store level dimensions for collision
+	tile_attr_width = tile_header.get("level_width", 20)
+	tile_attr_height = tile_header.get("level_height", 15)
+	
+	# Store tile attributes (collision map - Asset 500)
+	tile_attributes = stage_data.get("tile_attributes", PackedByteArray())
+	if tile_attributes.size() > 0:
+		print("[GameRunner] Loaded tile_attributes: %d bytes (expected %d)" % [
+			tile_attributes.size(), tile_attr_width * tile_attr_height])
+	else:
+		push_warning("[GameRunner] No tile_attributes found - collision disabled!")
+	
 	# Convert to pixel coords (PSX formula from Ghidra)
 	game_state.spawn_x = spawn_tile_x * TILE_SIZE + 8   # Center of tile
 	game_state.spawn_y = spawn_tile_y * TILE_SIZE + 15  # Bottom of tile
-	game_state.level_width = tile_header.get("level_width", 20) * TILE_SIZE
-	game_state.level_height = tile_header.get("level_height", 15) * TILE_SIZE
+	game_state.level_width = tile_attr_width * TILE_SIZE
+	game_state.level_height = tile_attr_height * TILE_SIZE
 	game_state.level_name = stage_data.get("level_name", "UNKNOWN")
 	game_state.level_id = stage_data.get("level_id", "????")
 	
@@ -347,6 +378,7 @@ func _init_player_spawn_position(stage_data: Dictionary) -> void:
 	player.y = float(game_state.spawn_y)
 	player.vel_x = 0.0
 	player.vel_y = 0.0
+	player.on_ground = false
 	
 	print("[GameRunner] InitPlayerSpawnPosition: (%d, %d)" % [game_state.spawn_x, game_state.spawn_y])
 
@@ -378,34 +410,16 @@ func _load_bg_color(_stage_data: Dictionary) -> void:
 	print("[GameRunner] BG Color: RGB(%d, %d, %d)" % [r, g, b])
 
 
-func _load_entities(stage_data: Dictionary) -> void:
+func _load_entities(_stage_data: Dictionary) -> void:
 	## Mirrors LoadEntitiesFromAsset501
-	## Loads 24-byte entity structures from stage data
+	## Entities are now loaded via StageSceneBuilder as BLBEntityBase nodes
+	## This function connects signals from entity nodes
 	
-	var entity_list = stage_data.get("entities", [])
 	active_entities.clear()
 	
-	for entity_def in entity_list:
-		var entity = {
-			# Position (from 24-byte structure)
-			"x1": entity_def.get("x1", 0),
-			"y1": entity_def.get("y1", 0),
-			"x2": entity_def.get("x2", 0),
-			"y2": entity_def.get("y2", 0),
-			"x_center": entity_def.get("x_center", 0),
-			"y_center": entity_def.get("y_center", 0),
-			"entity_type": entity_def.get("entity_type", 0),
-			"variant": entity_def.get("variant", 0),
-			"layer": entity_def.get("layer", 0),
-			# Runtime state
-			"active": true,
-			"visible": true,
-			# Rendering
-			"sprite": null,
-		}
-		active_entities.append(entity)
-	
-	print("[GameRunner] Loaded %d entities" % active_entities.size())
+	# Find Entities container created by StageSceneBuilder (in layer_container's scene)
+	# We'll connect to entity signals for loose coupling (Godot best practice)
+	print("[GameRunner] Entity signals will be connected after scene build")
 
 
 func _init_layers_and_tile_state(stage_data: Dictionary) -> void:
@@ -481,10 +495,72 @@ func _init_layers_and_tile_state(stage_data: Dictionary) -> void:
 	# Don't extract the Background ColorRect from StageSceneBuilder -
 	# we use the viewport clear color instead (set in _load_bg_color)
 	
+	# Extract Entities container and connect signals
+	var entities_node = stage_root.get_node_or_null("Entities")
+	if entities_node:
+		stage_root.remove_child(entities_node)
+		entity_container.add_child(entities_node)
+		
+		# Connect to entity signals and build active_entities list
+		_connect_entity_signals(entities_node)
+	
 	# Clean up the temporary root
 	stage_root.queue_free()
 	
-	print("[GameRunner] Initialized %d layers from StageSceneBuilder" % layers.size())
+	print("[GameRunner] Initialized %d layers, %d entities from StageSceneBuilder" % [layers.size(), active_entities.size()])
+
+
+func _connect_entity_signals(entities_node: Node) -> void:
+	## Connect entity signals for loose coupling (Godot best practice)
+	## Entities emit signals, GameRunner responds
+	
+	active_entities.clear()
+	
+	for entity_node in entities_node.get_children():
+		# Check if this is a BLBEntityBase-derived node
+		if entity_node.has_method("entity_tick"):
+			active_entities.append(entity_node)
+			
+			# Connect signals if they exist
+			if entity_node.has_signal("collected"):
+				entity_node.collected.connect(_on_entity_collected)
+			if entity_node.has_signal("player_damaged"):
+				entity_node.player_damaged.connect(_on_entity_player_damaged)
+			if entity_node.has_signal("portal_activated"):
+				entity_node.portal_activated.connect(_on_entity_portal_activated)
+			if entity_node.has_signal("message_triggered"):
+				entity_node.message_triggered.connect(_on_entity_message_triggered)
+			if entity_node.has_signal("entity_killed"):
+				entity_node.entity_killed.connect(_on_entity_killed)
+
+
+func _on_entity_collected(entity: Node2D, score_value: int) -> void:
+	## Called when player collects a collectible entity
+	game_state["score"] = game_state.get("score", 0) + score_value
+	print("[GameRunner] Collected! Score +%d (total: %d)" % [score_value, game_state.get("score", 0)])
+
+
+func _on_entity_player_damaged(entity: Node2D, damage: int) -> void:
+	## Called when an entity damages the player
+	print("[GameRunner] Player damaged by %s! -%d HP" % [entity.name, damage])
+	# TODO: Implement player health system
+
+
+func _on_entity_portal_activated(entity: Node2D, destination: int) -> void:
+	## Called when player enters a portal
+	print("[GameRunner] Portal activated! Destination: %d" % destination)
+	# TODO: Implement stage transitions
+
+
+func _on_entity_message_triggered(entity: Node2D, message_id: int) -> void:
+	## Called when player triggers a message/checkpoint
+	print("[GameRunner] Message triggered: %d" % message_id)
+	# TODO: Implement message display
+
+
+func _on_entity_killed(entity: Node2D) -> void:
+	## Called when an entity is killed
+	print("[GameRunner] Entity killed: %s" % entity.name)
 
 
 func _process(_delta: float) -> void:
@@ -545,20 +621,53 @@ func _update_input_state() -> void:
 
 
 func _process_gameplay() -> void:
-	## Player movement and camera follow
+	## Player movement with physics and tile collision
+	## Based on btm/docs/systems/player-physics.md
 	## Camera centers on player (screen center = 160, 120)
 	
-	var move_speed = 2.5
-	
-	# Move player with d-pad/arrows
+	# --- Horizontal Movement ---
+	var move_x: float = 0.0
 	if input_state.pad_current & PSXButton.LEFT:
-		player.x -= move_speed
-	if input_state.pad_current & PSXButton.RIGHT:
-		player.x += move_speed
-	if input_state.pad_current & PSXButton.UP:
-		player.y -= move_speed
-	if input_state.pad_current & PSXButton.DOWN:
-		player.y += move_speed
+		move_x = -WALK_SPEED
+	elif input_state.pad_current & PSXButton.RIGHT:
+		move_x = WALK_SPEED
+	
+	# Apply horizontal movement with wall collision
+	if move_x != 0:
+		var direction = 1 if move_x > 0 else -1
+		if not check_wall(player.x, player.y, direction):
+			player.x += move_x
+	
+	# --- Jump ---
+	if player.on_ground and (input_state.pad_pressed & PSXButton.CROSS):
+		player.vel_y = JUMP_VELOCITY
+		player.on_ground = false
+	
+	# --- Gravity ---
+	if not player.on_ground:
+		player.vel_y += GRAVITY
+		if player.vel_y > MAX_FALL_SPEED:
+			player.vel_y = MAX_FALL_SPEED
+	
+	# --- Ceiling Check ---
+	if player.vel_y < 0 and check_ceiling(player.x, player.y):
+		player.vel_y = 0  # Bonk head
+	
+	# --- Apply Vertical Velocity ---
+	player.y += player.vel_y
+	
+	# --- Floor Collision ---
+	if player.vel_y >= 0:  # Only check floor when falling/standing
+		if check_floor(player.x, player.y):
+			# Snap to tile boundary
+			var tile_y = int(player.y) / TILE_SIZE
+			player.y = float(tile_y * TILE_SIZE + TILE_SIZE - 1)
+			player.vel_y = 0.0
+			player.on_ground = true
+		else:
+			player.on_ground = false
+	else:
+		player.on_ground = false
 	
 	# Clamp player to level bounds
 	player.x = clampf(player.x, player.width / 2.0, game_state.level_width - player.width / 2.0)
@@ -581,26 +690,25 @@ func _process_gameplay() -> void:
 
 func _entity_tick_loop() -> void:
 	## Mirrors EntityTickLoop (0x80020e1c)
-	## Iterates active entity list and calls update functions
+	## Iterates active entity list and calls entity_tick()
+	## Passes game_state for loose coupling (entities don't access GameRunner directly)
+	
+	# Build game state dict to pass to entities
+	var entity_game_state: Dictionary = {
+		"player_x": player.x,
+		"player_y": player.y,
+		"player_width": player.width,
+		"player_height": player.height,
+		"camera_x": game_state.camera_x,
+		"camera_y": game_state.camera_y,
+		"frame_count": frame_count,
+		"input_state": input_state,
+	}
 	
 	for entity in active_entities:
-		if not entity.active:
-			continue
-		
-		# Entity update logic would go here
-		# In the original, each entity has a function pointer for its update
-		# For now, just check visibility based on camera
-		var ex = entity.x_center
-		var ey = entity.y_center
-		var cx = game_state.camera_x
-		var cy = game_state.camera_y
-		
-		# Simple visibility check (entity within viewport + margin)
-		var margin = 64
-		entity.visible = (
-			ex >= cx - margin and ex < cx + PSX_WIDTH + margin and
-			ey >= cy - margin and ey < cy + PSX_HEIGHT + margin
-		)
+		# Entities now handle their own active state check
+		if entity.has_method("entity_tick"):
+			entity.entity_tick(entity_game_state)
 
 
 func _update_parallax() -> void:
@@ -654,26 +762,40 @@ func _update_debug_hud() -> void:
 		return
 	
 	var visible_entities = 0
+	var active_count = 0
 	for e in active_entities:
+		if e.has_method("entity_tick") and e.get("active"):
+			active_count += 1
 		if e.visible:
 			visible_entities += 1
 	
-	debug_label.text = """[%s] %s Stage %d
-Player: (%d, %d)
+	# Get tile at player feet for debug
+	var tile_at_feet = get_tile_attribute(player.x, player.y + 1)
+	var ground_str = "ground" if player.on_ground else "air"
+	var score = game_state.get("score", 0)
+	
+	debug_label.text = """[%s] %s Stage %d  Score: %d
+Player: (%d, %d) vel_y=%.1f %s
+Tile@feet: 0x%02X
 Camera: (%d, %d)
 Level: %dx%d
-Entities: %d/%d visible
+Entities: %d active, %d visible / %d total
 Frame: %d
-[Arrows/WASD=Move, HOME=Respawn, F1=Debug]""" % [
+[Arrows=Move, X/Space=Jump, HOME=Respawn, F1=Debug]""" % [
 		game_state.level_id,
 		game_state.level_name,
 		stage_index + 1,
+		score,
 		int(player.x),
 		int(player.y),
+		player.vel_y,
+		ground_str,
+		tile_at_feet,
 		int(game_state.camera_x),
 		int(game_state.camera_y),
 		game_state.level_width,
 		game_state.level_height,
+		active_count,
 		visible_entities,
 		active_entities.size(),
 		frame_count,
@@ -695,3 +817,70 @@ func _input(event: InputEvent) -> void:
 				# Return player to spawn
 				player.x = float(game_state.spawn_x)
 				player.y = float(game_state.spawn_y)
+				player.vel_x = 0.0
+				player.vel_y = 0.0
+
+
+# =============================================================================
+# Tile Collision System
+# Based on btm/docs/systems/collision.md
+# =============================================================================
+
+func get_tile_attribute(pixel_x: float, pixel_y: float) -> int:
+	## Get collision attribute at a pixel position
+	## Mirrors GetTileAttributeAtPosition @ 0x800241f4
+	##
+	## Returns: attribute byte (0x00=empty, 0x02=solid, 0x5B=platform, etc.)
+	
+	if tile_attributes.size() == 0:
+		return TILE_EMPTY
+	
+	# Convert pixel to tile coords
+	var tile_x: int = int(pixel_x) / TILE_SIZE
+	var tile_y: int = int(pixel_y) / TILE_SIZE
+	
+	# Bounds check
+	if tile_x < 0 or tile_x >= tile_attr_width:
+		return TILE_EMPTY
+	if tile_y < 0 or tile_y >= tile_attr_height:
+		return TILE_EMPTY
+	
+	var index: int = tile_y * tile_attr_width + tile_x
+	if index < 0 or index >= tile_attributes.size():
+		return TILE_EMPTY
+	
+	return tile_attributes[index]
+
+
+func is_solid_at(pixel_x: float, pixel_y: float) -> bool:
+	## Check if position has solid collision (0x02)
+	return get_tile_attribute(pixel_x, pixel_y) == TILE_SOLID
+
+
+func is_platform_at(pixel_x: float, pixel_y: float) -> bool:
+	## Check if position is a one-way platform (0x5B)
+	return get_tile_attribute(pixel_x, pixel_y) == TILE_PLATFORM
+
+
+func check_floor(x: float, y: float) -> bool:
+	## Check if there's a floor below position
+	## Player can stand on TILE_SOLID or TILE_PLATFORM
+	var attr = get_tile_attribute(x, y + 1)  # Check just below feet
+	return attr == TILE_SOLID or attr == TILE_PLATFORM
+
+
+func check_wall(x: float, y: float, direction: int) -> bool:
+	## Check wall collision at multiple heights (like PSX CheckWallCollision)
+	## direction: -1 for left, +1 for right
+	## Checks 4 points vertically: Y-15, Y-16, Y-32, Y-48
+	var check_x = x + direction * 8  # Check 8 pixels in move direction
+	
+	for offset in [15, 16, 32, 48]:
+		if is_solid_at(check_x, y - offset):
+			return true
+	return false
+
+
+func check_ceiling(x: float, y: float) -> bool:
+	## Check for ceiling collision above player head
+	return is_solid_at(x, y - 48)
