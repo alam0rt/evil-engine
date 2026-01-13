@@ -412,9 +412,20 @@ func _add_layer_container(root: Node2D, layers: Array, tilemaps: Array, tileset:
 		layer.layer_flags = layer_data.get("flags", 0)
 		layer.tilemap_index = tilemap_idx
 		
-		# Position and z-index
+		# Position and z-index (priority from render_param)
 		layer.position = Vector2(layer.x_offset, layer.y_offset)
-		layer.z_index = layer_idx - layers.size()
+		# Priority from render_param field (signed 16-bit lower word)
+		# Per Ghidra @ 0x80024778 (InitLayersAndTileState):
+		#   priority = (short)(render_param & 0xFFFF)
+		# Priority ranges (from btm/docs/systems/rendering-order.md):
+		#   150-800: Background layers
+		#   900-1100: Gameplay/interactive layers
+		#   1200-1500: Foreground/overlay layers
+		#   10000: Player, HUD, UI
+		var priority: int = layer.render_param & 0xFFFF
+		if priority > 32767:
+			priority = priority - 65536  # Convert to signed
+		layer.z_index = priority
 		
 		# Fill tilemap (tilemaps is Array[PackedInt32Array] with u16 tile values)
 		var tilemap_data: PackedInt32Array = tilemaps[tilemap_idx]
@@ -446,6 +457,9 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 	container.set_script(BLBEntityContainer)
 	container.name = "EntityContainer"
 	container.entity_count = entities.size()
+	# Entity container z_index: middle of gameplay range (900-1100)
+	# Per btm/docs/systems/rendering-order.md
+	container.z_index = 1000
 	
 	var matched_count := 0
 	
@@ -478,6 +492,14 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 		
 		# Position at center
 		entity.position = Vector2(entity.x_center, entity.y_center)
+		
+		# Entity z_index: based on hardcoded z_order per entity type
+		# Per Ghidra InitEntitySprite calls (btm/docs/systems/entities.md):
+		# - General entities: ~1000
+		# - Particles/effects: 959
+		# - Boss components: 960-980
+		# - Player: 10000 (handled separately)
+		entity.z_index = EntitySprites.get_z_order(entity_type) - 1000  # Relative to container
 		
 		# Look up sprite by entity type → sprite ID mapping
 		# Game-accurate lookup: stage bank first, then primary fallback

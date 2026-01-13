@@ -245,7 +245,21 @@ func _add_tile_layers(root: Node2D, layers: Array, tilemaps: Array,
 		var tile_layer := TileMapLayer.new()
 		tile_layer.name = "Layer_%d" % i
 		tile_layer.tile_set = tileset
-		tile_layer.z_index = i
+		
+		# Priority from render_param field (signed 16-bit lower word)
+		# Per Ghidra @ 0x80017788 (OT offset calculation):
+		#   priority = (short)(render_param & 0xFFFF)
+		# Priority ranges (from btm/docs/systems/rendering-order.md):
+		#   150-800: Background layers
+		#   900-1100: Gameplay/interactive layers  
+		#   1200-1500: Foreground/overlay layers
+		#   10000: Player, HUD, UI
+		var render_param: int = layer.get("render_param", 0)
+		var priority: int = render_param & 0xFFFF
+		# Convert to signed 16-bit if needed
+		if priority > 32767:
+			priority = priority - 65536
+		tile_layer.z_index = priority
 		
 		# Position offset
 		tile_layer.position = Vector2(
@@ -280,7 +294,10 @@ func _add_tile_layers(root: Node2D, layers: Array, tilemaps: Array,
 		var scroll_x: float = float(scroll_x_raw) / 65536.0
 		var scroll_y: float = float(scroll_y_raw) / 65536.0
 		
-		# Store scroll values on layer for runtime access
+		# Store layer properties for runtime access
+		tile_layer.set_meta("layer_index", i)
+		tile_layer.set_meta("render_param", render_param)
+		tile_layer.set_meta("priority", priority)
 		tile_layer.set_meta("scroll_x", scroll_x_raw)
 		tile_layer.set_meta("scroll_y", scroll_y_raw)
 		tile_layer.set_meta("scroll_x_float", scroll_x)
@@ -298,11 +315,18 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 	- Each entity is a self-contained node with script extending BLBEntityBase
 	- Sprite is a child of the entity node
 	- Loose coupling via signals (collected, player_damaged, etc.)
+	
+	Priority/z_order (from btm/docs/systems/rendering-order.md):
+	- Entities are in gameplay range (900-1100)
+	- Player is at 10000
+	- Entity layer field (Asset 501 offset 0x14) can offset from base
 	"""
 	
 	var entities_container := Node2D.new()
 	entities_container.name = "Entities"
-	entities_container.z_index = 100
+	# Base z_index for entities container: middle of gameplay range
+	# Individual entities will offset based on their layer field
+	entities_container.z_index = 1000
 	root.add_child(entities_container)
 	entities_container.owner = root
 	
@@ -342,12 +366,23 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 		)
 		entity_node.entity_index = i
 		
+		# Entity z_index: based on hardcoded z_order per entity type
+		# Per Ghidra InitEntitySprite calls (btm/docs/systems/entities.md):
+		# - General entities: ~1000
+		# - Particles/effects: 959
+		# - Boss components: 960-980
+		# - Player: 10000 (handled separately)
+		entity_node.z_index = EntitySprites.get_z_order(entity_type) - 1000  # Relative to container
+		
 		# Look up sprite using EntitySprites mapping
 		var target_sprite_id = EntitySprites.get_sprite_id(entity_type)
 		var sprite: Dictionary = {}
 		
 		if target_sprite_id != null and target_sprite_id in sprite_by_id:
 			sprite = sprite_by_id[target_sprite_id]
+		
+		# Track child nodes for owner assignment after tree insertion
+		var children_to_own: Array[Node] = []
 		
 		if not sprite.is_empty() and _blb != null:
 			# Create AnimatedSprite2D with all animations
@@ -363,7 +398,7 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 				anim_sprite.play()
 			
 			entity_node.add_child(anim_sprite)
-			anim_sprite.owner = root
+			children_to_own.append(anim_sprite)
 		else:
 			# Fallback: create a simple colored rect as placeholder
 			var placeholder := ColorRect.new()
@@ -375,7 +410,7 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 			)
 			placeholder.position = -placeholder.size / 2  # Center it
 			entity_node.add_child(placeholder)
-			placeholder.owner = root
+			children_to_own.append(placeholder)
 			
 			# Add a label showing entity type
 			var label := Label.new()
@@ -383,10 +418,13 @@ func _add_entities(root: Node2D, entities: Array, sprites: Array) -> void:
 			label.add_theme_font_size_override("font_size", 8)
 			label.position = Vector2(-8, -16)
 			entity_node.add_child(label)
-			label.owner = root
+			children_to_own.append(label)
 		
+		# Add entity to container FIRST, then set owners
 		entities_container.add_child(entity_node)
 		entity_node.owner = root
+		for child in children_to_own:
+			child.owner = root
 
 
 func _add_spawn_point(root: Node2D, tile_header: Dictionary) -> void:

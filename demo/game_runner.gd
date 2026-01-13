@@ -80,22 +80,27 @@ enum PSXButton {
 }
 
 # Active entities (linked list in original, array here)
-var active_entities: Array[Dictionary] = []
+var active_entities: Array[Object] = []
 
 # Layer data
 var layers: Array[Dictionary] = []
 
-# Tile collision (Asset 500 - see btm/docs/systems/collision.md)
-# Attribute values: 0x00=empty, 0x02=solid, 0x5B=platform, 0x53=checkpoint
+# Tile collision (Asset 500 - from Ghidra GetTileAttributeAtPosition @ 0x800241f4)
+# Header: offset_x, offset_y, width, height (all u16), then 1 byte per tile
 var tile_attributes: PackedByteArray = PackedByteArray()
-var tile_attr_width: int = 0  # Level width in tiles
-var tile_attr_height: int = 0  # Level height in tiles
+var tile_attr_width: int = 0   # Collision map width (tiles)
+var tile_attr_height: int = 0  # Collision map height (tiles)
+var tile_attr_offset_x: int = 0  # Tile X offset (subtracted from coords)
+var tile_attr_offset_y: int = 0  # Tile Y offset (subtracted from coords)
 
-# Collision attribute constants (from btm/docs/systems/collision.md)
+# Collision attribute constants (from Ghidra PlayerCallback_800638d0)
+# Floor is solid if: attr != 0 && attr <= 0x3B
+# Values > 0x3B are triggers (checkpoints, spawn zones, etc.)
 const TILE_EMPTY: int = 0x00
-const TILE_SOLID: int = 0x02
+const TILE_SOLID_MAX: int = 0x3B  # Max value for solid floor
+const TILE_SOLID: int = 0x02      # Common solid value
 const TILE_CHECKPOINT: int = 0x53
-const TILE_PLATFORM: int = 0x5B  # One-way platform (CLOU clouds)
+const TILE_PLATFORM: int = 0x5B   # One-way platform (CLOU clouds)
 const TILE_SPAWN_ZONE: int = 0x65
 
 # Physics constants (estimated - see btm/docs/systems/player-physics.md)
@@ -104,17 +109,60 @@ const JUMP_VELOCITY: float = -6.0   # initial upward velocity
 const GRAVITY: float = 0.4          # pixels/frame²
 const MAX_FALL_SPEED: float = 8.0   # terminal velocity
 
-# Player state (mirrors GameState+0x116/0x118)
-var player: Dictionary = {
-	"x": 0.0,           # Pixel position (GameState+0x116)
-	"y": 0.0,           # Pixel position (GameState+0x118)
-	"vel_x": 0.0,       # Velocity
-	"vel_y": 0.0,
-	"on_ground": false,
-	"width": 16,        # Collision box
-	"height": 32,
+# Player state (mirrors g_pPlayerState @ 0x8009DC20)
+# Per btm/docs/systems/player-system.md
+var player_state: Dictionary = {
+	"initialized": false,      # State initialized (offset 0x00)
+	"active": true,            # Player is active (offset 0x01)
+	"lives": 5,                # Current lives (offset 0x11)
+	"powerup_flags": 0,        # Active powerups bitmask (offset 0x17)
+	"shrink_mode": false,      # Player is shrunk (offset 0x18)
 }
-var player_node: ColorRect  # Visual representation
+
+# Powerup flag constants (from player_state.powerup_flags)
+const POWERUP_HALO: int = 0x01   # Invincibility
+const POWERUP_TRAIL: int = 0x02  # Trail/glide effect
+
+# Player entity (mirrors entity struct, 0x1B4 bytes for normal player)
+# Per btm/docs/systems/player-system.md
+var player: Dictionary = {
+	"x": 0.0,                    # Pixel position (offset 0x68)
+	"y": 0.0,                    # Pixel position (offset 0x6A)
+	"vel_x": 0.0,                # X velocity (offset 0x160)
+	"vel_y": 0.0,                # Y velocity (offset 0x162)
+	"on_ground": false,
+	"facing_left": false,        # Direction (offset 0x74)
+	"width": 16,                 # Collision box (normal size)
+	"height": 32,
+	"invincibility_timer": 0,    # Damage invincibility (offset 0x128)
+	"powerup_timer": 0,          # Powerup effect timer (offset 0x144)
+	"damage_flag": false,        # Currently taking damage (offset 0x1AE)
+	"is_dead": false,            # Death state (entity[0x5e] = 1)
+	"state": 0,                  # State machine index (0=normal, 2=hit)
+	"anim_index": 0,             # Current animation index
+	"anim_frame": 0,             # Current frame in animation
+	"anim_timer": 0,             # Frame delay counter
+	"sprite_id": 0,              # Current sprite ID (from sprite table)
+}
+var player_node: Node2D        # Visual representation (Sprite2D or ColorRect)
+var player_sprite: Sprite2D    # Actual sprite (if loaded)
+var player_fallback: ColorRect # Fallback colored box
+
+# Sprite data (from Asset 600 tertiary + primary)
+var sprites: Array = []           # Combined sprite array
+var sprite_lookup: Dictionary = {}  # Sprite ID -> sprite dict
+
+# Player sprite IDs (from Ghidra DAT_8009c174)
+# These are the sprite IDs used by normal player states
+const PLAYER_SPRITE_IDS: Array[int] = [
+	0x08208902,  # Default/idle
+	0x48204012,  # Walking?
+	0x856990A0,  # Jumping?
+	0x0708A4A0,  # Landing?
+	0x052AA082,  # Running?
+	0x393C80C2,  # Ducking?
+	0x1CF99931,  # Attack?
+]
 
 # Rendering
 var viewport: SubViewport
@@ -215,24 +263,39 @@ func _init_graphics_system() -> void:
 	layer_container.name = "Layers"
 	viewport.add_child(layer_container)
 	
-	# Create entity container (in front of layers)
+	# Create entity container - gameplay z-order range (900-1100)
+	# Per btm/docs/systems/rendering-order.md
 	entity_container = Node2D.new()
 	entity_container.name = "Entities"
-	entity_container.z_index = 100
+	entity_container.z_index = 1000
 	viewport.add_child(entity_container)
 	
-	# Create player container (z=10000 like original)
+	# Create player container
+	# PSX uses z=10000 but Godot max is 4096, so we use relative ordering
+	# Player is always rendered on top via highest z_index in the container hierarchy
 	player_container = Node2D.new()
 	player_container.name = "Player"
-	player_container.z_index = 200  # In front of entities
+	player_container.z_index = 4000  # Max practical value (Godot limit ~4096)
 	viewport.add_child(player_container)
 	
-	# Create player visual (simple colored box)
-	player_node = ColorRect.new()
-	player_node.name = "PlayerSprite"
-	player_node.color = Color(0.2, 0.6, 1.0, 0.9)  # Blue
-	player_node.size = Vector2(player.width, player.height)
+	# Create player visual node (will be updated with sprite later)
+	player_node = Node2D.new()
+	player_node.name = "PlayerVisual"
 	player_container.add_child(player_node)
+	
+	# Create sprite child (for actual sprite rendering)
+	player_sprite = Sprite2D.new()
+	player_sprite.name = "PlayerSprite"
+	player_sprite.centered = false  # Use top-left origin like PSX
+	player_sprite.visible = false   # Hidden until sprite loaded
+	player_node.add_child(player_sprite)
+	
+	# Create fallback colored box
+	player_fallback = ColorRect.new()
+	player_fallback.name = "PlayerFallback"
+	player_fallback.color = Color(0.2, 0.6, 1.0, 0.9)  # Blue
+	player_fallback.size = Vector2(player.width, player.height)
+	player_node.add_child(player_fallback)
 	
 	# Debug HUD
 	_create_debug_hud()
@@ -313,6 +376,9 @@ func _initialize_and_load_level() -> void:
 	if not blb_archive.load_level(level_index, stage_index):
 		push_warning("[GameRunner] EVIL load_level failed, using GDScript fallback")
 	
+	# Load sprites from stage_data (Asset 600 tertiary + primary)
+	_load_sprites(stage_data)
+	
 	# LoadTileDataToVRAM (0x80025240) - handled by BLBReader
 	print("[GameRunner] LoadTileDataToVRAM... (handled by importer)")
 	
@@ -349,27 +415,39 @@ func _init_player_spawn_position(stage_data: Dictionary) -> void:
 	##   GameState+0x116 = spawn_x * 16 + 8  (center of tile)
 	##   GameState+0x118 = spawn_y * 16 + 15 (bottom of tile)
 	
-	var tile_header = stage_data.get("tile_header", {})
-	var spawn_tile_x = tile_header.get("spawn_x", 0)
-	var spawn_tile_y = tile_header.get("spawn_y", 0)
+	var tile_header: Dictionary = stage_data.get("tile_header", {})
+	var spawn_tile_x: int = tile_header.get("spawn_x", 0)
+	var spawn_tile_y: int = tile_header.get("spawn_y", 0)
 	
-	# Store level dimensions for collision
-	tile_attr_width = tile_header.get("level_width", 20)
-	tile_attr_height = tile_header.get("level_height", 15)
+	# Get level dimensions from tile_header (for display/bounds)
+	var level_w: int = tile_header.get("level_width", 20)
+	var level_h: int = tile_header.get("level_height", 15)
+	
+	# Get tile attribute dimensions and offsets from Asset 500 header
+	# (from Ghidra GetTileAttributeAtPosition @ 0x800241f4)
+	tile_attr_offset_x = stage_data.get("tile_attr_offset_x", 0)
+	tile_attr_offset_y = stage_data.get("tile_attr_offset_y", 0)
+	tile_attr_width = stage_data.get("tile_attr_width", level_w)
+	tile_attr_height = stage_data.get("tile_attr_height", level_h)
 	
 	# Store tile attributes (collision map - Asset 500)
 	tile_attributes = stage_data.get("tile_attributes", PackedByteArray())
 	if tile_attributes.size() > 0:
-		print("[GameRunner] Loaded tile_attributes: %d bytes (expected %d)" % [
-			tile_attributes.size(), tile_attr_width * tile_attr_height])
+		print("[GameRunner] Loaded tile_attributes: %d bytes (grid %dx%d, offset %d,%d)" % [
+			tile_attributes.size(), tile_attr_width, tile_attr_height,
+			tile_attr_offset_x, tile_attr_offset_y])
+		# Verify size matches dimensions
+		if tile_attributes.size() != tile_attr_width * tile_attr_height:
+			push_warning("[GameRunner] tile_attributes size mismatch!")
 	else:
 		push_warning("[GameRunner] No tile_attributes found - collision disabled!")
 	
 	# Convert to pixel coords (PSX formula from Ghidra)
 	game_state.spawn_x = spawn_tile_x * TILE_SIZE + 8   # Center of tile
 	game_state.spawn_y = spawn_tile_y * TILE_SIZE + 15  # Bottom of tile
-	game_state.level_width = tile_attr_width * TILE_SIZE
-	game_state.level_height = tile_attr_height * TILE_SIZE
+	# Use the larger of tile_header or tile_attr dimensions for level bounds
+	game_state.level_width = maxi(level_w, tile_attr_width) * TILE_SIZE
+	game_state.level_height = maxi(level_h, tile_attr_height) * TILE_SIZE
 	game_state.level_name = stage_data.get("level_name", "UNKNOWN")
 	game_state.level_id = stage_data.get("level_id", "????")
 	
@@ -380,7 +458,56 @@ func _init_player_spawn_position(stage_data: Dictionary) -> void:
 	player.vel_y = 0.0
 	player.on_ground = false
 	
+	# Initialize player sprite (after sprites are loaded)
+	_init_player_sprite()
+	
 	print("[GameRunner] InitPlayerSpawnPosition: (%d, %d)" % [game_state.spawn_x, game_state.spawn_y])
+
+
+func _init_player_sprite() -> void:
+	## Initialize player sprite from loaded sprite data
+	## Mirrors InitPlayerSpriteAvailability @ 0x80059a70
+	
+	# Try to load the first player sprite
+	var image: Image = decode_player_sprite_frame(0, 0)  # Animation 0, Frame 0
+	
+	if image != null:
+		# Success - use actual sprite
+		var texture := ImageTexture.create_from_image(image)
+		player_sprite.texture = texture
+		player_sprite.visible = true
+		player_fallback.visible = false
+		
+		# Update player dimensions from sprite
+		player.width = image.get_width()
+		player.height = image.get_height()
+		
+		print("[GameRunner] Loaded player sprite: %dx%d" % [image.get_width(), image.get_height()])
+	else:
+		# Fallback to colored box
+		player_sprite.visible = false
+		player_fallback.visible = true
+		player_fallback.size = Vector2(player.width, player.height)
+		print("[GameRunner] Using fallback player sprite (no sprite data found)")
+
+
+func _update_player_sprite() -> void:
+	## Update player sprite based on current animation state
+	
+	# For now, just update flip based on facing direction
+	if player_sprite.visible:
+		player_sprite.flip_h = player.facing_left
+		# Sprite offset: render_x, render_y from frame metadata
+		# The sprite is drawn relative to entity position
+		# Position is already handled in _update_camera_and_player_position
+	else:
+		# Update fallback color based on state
+		if player.is_dead:
+			player_fallback.color = Color(1.0, 0.2, 0.2, 0.9)  # Red
+		elif player.damage_flag:
+			player_fallback.color = Color(1.0, 0.6, 0.2, 0.9)  # Orange
+		else:
+			player_fallback.color = Color(0.2, 0.6, 1.0, 0.9)  # Blue
 
 
 func _load_bg_color(_stage_data: Dictionary) -> void:
@@ -388,26 +515,38 @@ func _load_bg_color(_stage_data: Dictionary) -> void:
 	## Sets the viewport clear color (visible where no layers cover)
 	## Uses EVIL GDExtension for fast access
 	
-	if blb_archive != null:
-		game_state.bg_color = blb_archive.get_background_color()
+	var bg: Color = Color.BLACK
+	
+	if blb_archive != null and blb_archive.has_method("get_background_color"):
+		var result = blb_archive.get_background_color()
+		if result is Color:
+			bg = result
+		else:
+			# Fallback to GDScript parsing
+			var tile_header: Dictionary = _stage_data.get("tile_header", {})
+			bg = Color8(
+				tile_header.get("bg_r", 0),
+				tile_header.get("bg_g", 0),
+				tile_header.get("bg_b", 0)
+			)
 	else:
 		# Fallback to GDScript parsing
-		var tile_header = _stage_data.get("tile_header", {})
-		var r = tile_header.get("bg_r", 0)
-		var g = tile_header.get("bg_g", 0)
-		var b = tile_header.get("bg_b", 0)
-		game_state.bg_color = Color8(r, g, b)
+		var tile_header: Dictionary = _stage_data.get("tile_header", {})
+		bg = Color8(
+			tile_header.get("bg_r", 0),
+			tile_header.get("bg_g", 0),
+			tile_header.get("bg_b", 0)
+		)
+	
+	game_state.bg_color = bg
 	
 	# Set clear color - this shows through where layers don't cover
-	RenderingServer.set_default_clear_color(game_state.bg_color)
+	RenderingServer.set_default_clear_color(bg)
 	
 	# Also set SubViewport's clear color
 	viewport.transparent_bg = false
 	
-	var r = int(game_state.bg_color.r8)
-	var g = int(game_state.bg_color.g8)
-	var b = int(game_state.bg_color.b8)
-	print("[GameRunner] BG Color: RGB(%d, %d, %d)" % [r, g, b])
+	print("[GameRunner] BG Color: RGB(%d, %d, %d)" % [int(bg.r8), int(bg.g8), int(bg.b8)])
 
 
 func _load_entities(_stage_data: Dictionary) -> void:
@@ -420,6 +559,66 @@ func _load_entities(_stage_data: Dictionary) -> void:
 	# Find Entities container created by StageSceneBuilder (in layer_container's scene)
 	# We'll connect to entity signals for loose coupling (Godot best practice)
 	print("[GameRunner] Entity signals will be connected after scene build")
+
+
+func _load_sprites(stage_data: Dictionary) -> void:
+	## Load sprites from Asset 600 (tertiary + primary)
+	## Mirrors LookupSpriteById @ 0x8007bb10: checks tertiary first, then primary
+	
+	sprites.clear()
+	sprite_lookup.clear()
+	
+	# Load tertiary sprites (stage-specific) - checked first in game
+	var tertiary_sprites: Array = stage_data.get("sprites", [])
+	for s in tertiary_sprites:
+		sprites.append(s)
+		if s.has("id"):
+			sprite_lookup[s.id] = s
+	
+	# Load primary sprites (level-wide) - fallback in game
+	var primary_sprites: Array = stage_data.get("primary_sprites", [])
+	for s in primary_sprites:
+		# Only add if not already in tertiary (tertiary takes precedence)
+		if s.has("id") and not sprite_lookup.has(s.id):
+			sprites.append(s)
+			sprite_lookup[s.id] = s
+	
+	print("[GameRunner] Loaded %d sprites (%d tertiary, %d primary)" % [
+		sprites.size(), tertiary_sprites.size(), primary_sprites.size()])
+	
+	# Check if any player sprite IDs are available
+	var player_sprites_found: int = 0
+	for sprite_id in PLAYER_SPRITE_IDS:
+		if sprite_lookup.has(sprite_id):
+			player_sprites_found += 1
+	
+	if player_sprites_found > 0:
+		print("[GameRunner] Found %d player sprite IDs in level data" % player_sprites_found)
+	else:
+		print("[GameRunner] No player sprite IDs found - using fallback colored box")
+
+
+func find_sprite_by_id(sprite_id: int) -> Dictionary:
+	## Find sprite by ID (mirrors LookupSpriteById @ 0x8007bb10)
+	return sprite_lookup.get(sprite_id, {})
+
+
+func decode_player_sprite_frame(anim_idx: int, frame_idx: int) -> Image:
+	## Decode a player sprite frame
+	## Tries each player sprite ID until one is found
+	
+	for sprite_id in PLAYER_SPRITE_IDS:
+		var sprite: Dictionary = find_sprite_by_id(sprite_id)
+		if sprite.is_empty():
+			continue
+		
+		# Use blb_reader to decode the frame
+		if blb_reader != null and blb_reader.has_method("decode_sprite_frame"):
+			var image: Image = blb_reader.decode_sprite_frame(sprite, anim_idx, frame_idx)
+			if image != null:
+				return image
+	
+	return null
 
 
 func _init_layers_and_tile_state(stage_data: Dictionary) -> void:
@@ -542,8 +741,150 @@ func _on_entity_collected(entity: Node2D, score_value: int) -> void:
 
 func _on_entity_player_damaged(entity: Node2D, damage: int) -> void:
 	## Called when an entity damages the player
+	## Mirrors damage handling in PlayerStateCallback_2 @ 0x8006864c
+	
+	# Check if invincible (from timer or powerup)
+	if player.invincibility_timer > 0:
+		return
+	if player_state.powerup_flags & POWERUP_HALO:
+		return
+	if player.is_dead:
+		return
+	
 	print("[GameRunner] Player damaged by %s! -%d HP" % [entity.name, damage])
-	# TODO: Implement player health system
+	
+	# Enter hit/damage state
+	player.damage_flag = true
+	player.state = 2  # Hit state (PlayerStateCallback_2)
+	
+	# Apply knockback
+	var knockback_x = -2.0 if player.facing_left else 2.0
+	player.vel_x = knockback_x
+	player.vel_y = -3.0  # Slight upward bounce
+	
+	# Start invincibility timer (about 2 seconds at 60fps)
+	player.invincibility_timer = 120
+	
+	# Flash visual feedback
+	_start_damage_flash()
+	
+	# Decrement lives
+	player_state.lives -= 1
+	print("[GameRunner] Lives remaining: %d" % player_state.lives)
+	
+	# Check for death
+	if player_state.lives <= 0:
+		_trigger_player_death()
+
+
+func _start_damage_flash() -> void:
+	## Start damage flash effect (RGB modulation)
+	## PSX uses RGB at entity+0xF0-F5 for flash
+	if player_node:
+		# Flash red briefly
+		var tween = create_tween()
+		tween.tween_property(player_node, "color", Color(1.0, 0.3, 0.3, 0.9), 0.1)
+		tween.tween_property(player_node, "color", Color(0.2, 0.6, 1.0, 0.9), 0.1)
+		tween.set_loops(5)
+
+
+func _trigger_player_death() -> void:
+	## Triggers player death state
+	## Mirrors Callback_80069ef4 from btm/docs/systems/player-system.md
+	
+	print("[GameRunner] Player died!")
+	
+	# Mark as dead (entity[0x5e] = 1)
+	player.is_dead = true
+	player.damage_flag = false
+	
+	# Clear movement
+	player.vel_x = 0.0
+	player.vel_y = 0.0
+	
+	# Death visual effect (PSX scales to 3x and plays death animation)
+	if player_node:
+		var tween = create_tween()
+		# Scale up (death explosion effect in PSX)
+		tween.tween_property(player_node, "scale", Vector2(3.0, 3.0), 0.3)
+		tween.parallel().tween_property(player_node, "modulate:a", 0.0, 0.5)
+		tween.tween_callback(_respawn_after_death)
+	
+	# Play death sound would go here
+	# PlaySoundEffect(0x4810c2c4, 0xa0, 0)
+
+
+func _respawn_after_death() -> void:
+	## Respawn player after death
+	## Mirrors RespawnAfterDeath @ 0x8007cfc0
+	
+	print("[GameRunner] Respawning...")
+	
+	# Reset player entity state
+	player.is_dead = false
+	player.damage_flag = false
+	player.invincibility_timer = 60  # Brief invincibility on respawn
+	player.state = 0  # Normal state
+	
+	# Clear powerups on death (per DecrementPlayerLives)
+	player_state.powerup_flags = 0
+	
+	# Reset position to spawn/checkpoint
+	player.x = float(game_state.spawn_x)
+	player.y = float(game_state.spawn_y)
+	player.vel_x = 0.0
+	player.vel_y = 0.0
+	
+	# Reset visual
+	if player_node:
+		player_node.scale = Vector2.ONE
+		player_node.modulate = Color.WHITE
+		player_node.color = Color(0.2, 0.6, 1.0, 0.9)
+	
+	# Check game over
+	if player_state.lives <= 0:
+		print("[GameRunner] GAME OVER")
+		# Would transition to game over screen
+		player_state.lives = 5  # For now, just reset
+
+
+func _update_player_timers() -> void:
+	## Update player-related timers each frame
+	
+	# Invincibility countdown
+	if player.invincibility_timer > 0:
+		player.invincibility_timer -= 1
+		# Blink effect during invincibility
+		if player_node:
+			player_node.visible = (player.invincibility_timer % 10) < 5
+		if player.invincibility_timer == 0:
+			player.damage_flag = false
+			if player_node:
+				player_node.visible = true
+	
+	# Powerup timer countdown
+	if player.powerup_timer > 0:
+		player.powerup_timer -= 1
+		if player.powerup_timer == 0:
+			# Powerup expired - clear flags
+			player_state.powerup_flags = 0
+			print("[GameRunner] Powerup expired")
+
+
+func activate_powerup(powerup_type: int, duration: int = 600) -> void:
+	## Activate a powerup effect
+	## @param powerup_type: POWERUP_HALO or POWERUP_TRAIL
+	## @param duration: frames (600 = 10 seconds at 60fps)
+	
+	player_state.powerup_flags |= powerup_type
+	player.powerup_timer = duration
+	
+	if powerup_type & POWERUP_HALO:
+		print("[GameRunner] Halo powerup activated (invincibility)")
+		# Would create halo child entity here
+	if powerup_type & POWERUP_TRAIL:
+		print("[GameRunner] Trail powerup activated")
+		# Would create trail child entity here
 
 
 func _on_entity_portal_activated(entity: Node2D, destination: int) -> void:
@@ -625,12 +966,21 @@ func _process_gameplay() -> void:
 	## Based on btm/docs/systems/player-physics.md
 	## Camera centers on player (screen center = 160, 120)
 	
+	# Skip if dead
+	if player.is_dead:
+		return
+	
+	# Update timers (invincibility, powerups)
+	_update_player_timers()
+	
 	# --- Horizontal Movement ---
 	var move_x: float = 0.0
 	if input_state.pad_current & PSXButton.LEFT:
 		move_x = -WALK_SPEED
+		player.facing_left = true
 	elif input_state.pad_current & PSXButton.RIGHT:
 		move_x = WALK_SPEED
+		player.facing_left = false
 	
 	# Apply horizontal movement with wall collision
 	if move_x != 0:
@@ -653,25 +1003,42 @@ func _process_gameplay() -> void:
 	if player.vel_y < 0 and check_ceiling(player.x, player.y):
 		player.vel_y = 0  # Bonk head
 	
-	# --- Apply Vertical Velocity ---
-	player.y += player.vel_y
-	
-	# --- Floor Collision ---
-	if player.vel_y >= 0:  # Only check floor when falling/standing
-		if check_floor(player.x, player.y):
-			# Snap to tile boundary
-			var tile_y = int(player.y) / TILE_SIZE
-			player.y = float(tile_y * TILE_SIZE + TILE_SIZE - 1)
-			player.vel_y = 0.0
-			player.on_ground = true
-		else:
+	# --- Apply Vertical Velocity with step-wise collision ---
+	# Check for floors along the path to prevent tunneling through thin platforms
+	if player.vel_y >= 0:  # Falling or standing
+		var remaining_y: float = player.vel_y
+		var step_size: float = 8.0  # Check every 8 pixels (half a tile)
+		
+		while remaining_y > 0:
+			var step: float = minf(remaining_y, step_size)
+			player.y += step
+			remaining_y -= step
+			
+			# Check if we hit a floor
+			if check_floor(player.x, player.y):
+				# Snap to top of the tile we landed on
+				var tile_y: int = int(player.y) / TILE_SIZE
+				player.y = float(tile_y * TILE_SIZE)  # Top of tile
+				player.vel_y = 0.0
+				player.on_ground = true
+				remaining_y = 0  # Stop moving
+				break
+		
+		if player.vel_y != 0:
 			player.on_ground = false
 	else:
+		# Moving upward - just apply velocity
+		player.y += player.vel_y
 		player.on_ground = false
 	
-	# Clamp player to level bounds
+	# --- Death Checks ---
+	# Falling off bottom of level triggers death
+	if player.y > game_state.level_height + 100:
+		_trigger_player_death()
+		return
+	
+	# Clamp player to level bounds (but don't kill for going past sides)
 	player.x = clampf(player.x, player.width / 2.0, game_state.level_width - player.width / 2.0)
-	player.y = clampf(player.y, player.height, game_state.level_height)
 	
 	# Camera follows player (center player on screen)
 	# Screen center is at (160, 120) in PSX coords
@@ -686,6 +1053,9 @@ func _process_gameplay() -> void:
 	var screen_x = player.x - game_state.camera_x - player.width / 2.0
 	var screen_y = player.y - game_state.camera_y - player.height
 	player_node.position = Vector2(screen_x, screen_y)
+	
+	# Update player sprite state (flip, animation, etc.)
+	_update_player_sprite()
 
 
 func _entity_tick_loop() -> void:
@@ -699,6 +1069,8 @@ func _entity_tick_loop() -> void:
 		"player_y": player.y,
 		"player_width": player.width,
 		"player_height": player.height,
+		"player_invincible": player.invincibility_timer > 0 or (player_state.powerup_flags & POWERUP_HALO) != 0,
+		"player_is_dead": player.is_dead,
 		"camera_x": game_state.camera_x,
 		"camera_y": game_state.camera_y,
 		"frame_count": frame_count,
@@ -773,9 +1145,18 @@ func _update_debug_hud() -> void:
 	var tile_at_feet = get_tile_attribute(player.x, player.y + 1)
 	var ground_str = "ground" if player.on_ground else "air"
 	var score = game_state.get("score", 0)
+	var state_str = "DEAD" if player.is_dead else ("HIT" if player.damage_flag else "OK")
+	var powerup_str = ""
+	if player_state.powerup_flags & POWERUP_HALO:
+		powerup_str += "HALO "
+	if player_state.powerup_flags & POWERUP_TRAIL:
+		powerup_str += "TRAIL "
+	if powerup_str == "":
+		powerup_str = "-"
 	
-	debug_label.text = """[%s] %s Stage %d  Score: %d
-Player: (%d, %d) vel_y=%.1f %s
+	debug_label.text = """[%s] %s Stage %d  Score: %d  Lives: %d
+Player: (%d, %d) vel_y=%.1f %s %s
+Powerups: %s  Invuln: %d
 Tile@feet: 0x%02X
 Camera: (%d, %d)
 Level: %dx%d
@@ -786,10 +1167,14 @@ Frame: %d
 		game_state.level_name,
 		stage_index + 1,
 		score,
+		player_state.lives,
 		int(player.x),
 		int(player.y),
 		player.vel_y,
 		ground_str,
+		state_str,
+		powerup_str,
+		player.invincibility_timer,
 		tile_at_feet,
 		int(game_state.camera_x),
 		int(game_state.camera_y),
@@ -823,23 +1208,29 @@ func _input(event: InputEvent) -> void:
 
 # =============================================================================
 # Tile Collision System
-# Based on btm/docs/systems/collision.md
+# Based on Ghidra GetTileAttributeAtPosition @ 0x800241f4
 # =============================================================================
 
 func get_tile_attribute(pixel_x: float, pixel_y: float) -> int:
 	## Get collision attribute at a pixel position
 	## Mirrors GetTileAttributeAtPosition @ 0x800241f4
 	##
+	## Ghidra logic:
+	##   tile_x = (pixel_x >> 4) - offset_x
+	##   tile_y = (pixel_y >> 4) - offset_y
+	##   if (tile_x < 0 or tile_x >= width or tile_y < 0 or tile_y >= height): return 0
+	##   return data[tile_y * width + tile_x]
+	##
 	## Returns: attribute byte (0x00=empty, 0x02=solid, 0x5B=platform, etc.)
 	
 	if tile_attributes.size() == 0:
 		return TILE_EMPTY
 	
-	# Convert pixel to tile coords
-	var tile_x: int = int(pixel_x) / TILE_SIZE
-	var tile_y: int = int(pixel_y) / TILE_SIZE
+	# Convert pixel to tile coords and apply offsets (from Ghidra)
+	var tile_x: int = (int(pixel_x) >> 4) - tile_attr_offset_x
+	var tile_y: int = (int(pixel_y) >> 4) - tile_attr_offset_y
 	
-	# Bounds check
+	# Bounds check (matches Ghidra: return 0 if out of bounds)
 	if tile_x < 0 or tile_x >= tile_attr_width:
 		return TILE_EMPTY
 	if tile_y < 0 or tile_y >= tile_attr_height:
@@ -853,8 +1244,10 @@ func get_tile_attribute(pixel_x: float, pixel_y: float) -> int:
 
 
 func is_solid_at(pixel_x: float, pixel_y: float) -> bool:
-	## Check if position has solid collision (0x02)
-	return get_tile_attribute(pixel_x, pixel_y) == TILE_SOLID
+	## Check if position has solid collision
+	## From Ghidra: solid if attr != 0 && attr <= 0x3B
+	var attr := get_tile_attribute(pixel_x, pixel_y)
+	return attr != TILE_EMPTY and attr <= TILE_SOLID_MAX
 
 
 func is_platform_at(pixel_x: float, pixel_y: float) -> bool:
@@ -862,25 +1255,37 @@ func is_platform_at(pixel_x: float, pixel_y: float) -> bool:
 	return get_tile_attribute(pixel_x, pixel_y) == TILE_PLATFORM
 
 
+func is_floor_solid(attr: int) -> bool:
+	## Check if a tile attribute represents solid ground
+	## From Ghidra PlayerCallback_800638d0: solid if attr != 0 && attr <= 0x3B
+	return attr != TILE_EMPTY and attr <= TILE_SOLID_MAX
+
+
 func check_floor(x: float, y: float) -> bool:
 	## Check if there's a floor below position
-	## Player can stand on TILE_SOLID or TILE_PLATFORM
-	var attr = get_tile_attribute(x, y + 1)  # Check just below feet
-	return attr == TILE_SOLID or attr == TILE_PLATFORM
+	## Uses Y+2 check point from Ghidra (just below feet)
+	var attr := get_tile_attribute(x, y + 2)  # Y+2 from Ghidra
+	
+	# Solid floor: 0x01-0x3B (includes 0x02 solid tiles)
+	# Platform: 0x5B (one-way, only if falling)
+	return is_floor_solid(attr) or attr == TILE_PLATFORM
 
 
 func check_wall(x: float, y: float, direction: int) -> bool:
-	## Check wall collision at multiple heights (like PSX CheckWallCollision)
+	## Check wall collision at multiple heights (like PSX CheckWallCollision @ 0x80059bc8)
 	## direction: -1 for left, +1 for right
 	## Checks 4 points vertically: Y-15, Y-16, Y-32, Y-48
-	var check_x = x + direction * 8  # Check 8 pixels in move direction
+	## Returns true if ANY point hits solid (attr 0x01-0x3B)
+	var check_x := x + direction * 8  # Check 8 pixels in move direction
 	
 	for offset in [15, 16, 32, 48]:
-		if is_solid_at(check_x, y - offset):
+		var attr := get_tile_attribute(check_x, y - offset)
+		if is_floor_solid(attr):  # Same range check as floor
 			return true
 	return false
 
 
 func check_ceiling(x: float, y: float) -> bool:
 	## Check for ceiling collision above player head
-	return is_solid_at(x, y - 48)
+	var attr := get_tile_attribute(x, y - 48)
+	return is_floor_solid(attr)

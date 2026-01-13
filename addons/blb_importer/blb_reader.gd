@@ -232,9 +232,25 @@ func load_stage(level_index: int, stage_index: int) -> Dictionary:
 		result["entities"] = _parse_entities(entities_asset.data)
 	
 	# Load tile attributes (collision map) from tertiary Asset 500
+	# Format per Ghidra GetTileAttributeUnknown/GetTileAttributeDimensions:
+	#   0x00  u16   offset_x (tile offset, typically 0-21)
+	#   0x02  u16   offset_y (tile offset, typically 0-21)
+	#   0x04  u16   width (tiles)
+	#   0x06  u16   height (tiles)
+	#   0x08  N     Tile data (1 byte per tile, width × height)
 	var tile_attrs := find_asset(tertiary, ASSET_TILE_ATTRIBUTES)
-	if not tile_attrs.is_empty():
-		result["tile_attributes"] = tile_attrs.data
+	if not tile_attrs.is_empty() and tile_attrs.data.size() >= 8:
+		var attr_offset_x := _read_u16_from(tile_attrs.data, 0)
+		var attr_offset_y := _read_u16_from(tile_attrs.data, 2)
+		var attr_width := _read_u16_from(tile_attrs.data, 4)
+		var attr_height := _read_u16_from(tile_attrs.data, 6)
+		# Store offsets and dimensions from Asset 500 header
+		result["tile_attr_offset_x"] = attr_offset_x
+		result["tile_attr_offset_y"] = attr_offset_y
+		result["tile_attr_width"] = attr_width
+		result["tile_attr_height"] = attr_height
+		# Skip 8-byte header, return only tile data
+		result["tile_attributes"] = tile_attrs.data.slice(8)
 	
 	# Load sprites from tertiary Asset 600 (stage-specific)
 	var sprite_container := find_asset(tertiary, ASSET_SPRITE_CONTAINER)

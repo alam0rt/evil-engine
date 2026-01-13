@@ -38,6 +38,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Collectible coin",
 		"color": Color(1.0, 0.8, 0.2),  # Gold
 		"sprite_id": 0xb8700ca1,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.AMMO: {
 		"name": "Ammo",
@@ -45,6 +46,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Bullet pickup",
 		"color": Color(1.0, 1.0, 0.0),  # Yellow
 		"sprite_id": null,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.ITEM: {
 		"name": "Item",
@@ -52,6 +54,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Collectible item",
 		"color": Color(0.0, 1.0, 0.5),  # Cyan-green
 		"sprite_id": 0x0c34aa22,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.OBJECT: {
 		"name": "Object",
@@ -59,6 +62,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Large object",
 		"color": Color(0.5, 0.5, 1.0),  # Light blue
 		"sprite_id": null,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.AMMO_SPECIAL: {
 		"name": "Ammo Special",
@@ -66,6 +70,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Special bullet pickup",
 		"color": Color(1.0, 0.6, 0.0),  # Orange
 		"sprite_id": null,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.ENEMY_A: {
 		"name": "Enemy A",
@@ -73,6 +78,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Enemy type 1",
 		"color": Color(1.0, 0.2, 0.2),  # Red
 		"sprite_id": 0x1e1000b3,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.ENEMY_B: {
 		"name": "Enemy B",
@@ -80,6 +86,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Enemy type 2",
 		"color": Color(1.0, 0.3, 0.3),  # Light red
 		"sprite_id": 0x182d840c,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.PLATFORM_A: {
 		"name": "Platform",
@@ -87,6 +94,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Moving platform",
 		"color": Color(0.5, 0.5, 1.0),  # Blue
 		"sprite_id": null,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.PORTAL: {
 		"name": "Portal",
@@ -94,6 +102,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Portal/warp point",
 		"color": Color(1.0, 0.0, 1.0),  # Magenta
 		"sprite_id": 0xb01c25f0,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.MESSAGE: {
 		"name": "Message",
@@ -101,6 +110,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Message/save box",
 		"color": Color(0.0, 1.0, 1.0),  # Cyan
 		"sprite_id": 0xa89d0ad0,
+		"z_order": 1001,  # Ghidra: 0x3e9
 	},
 	EntityType.PLATFORM_B: {
 		"name": "Platform B",
@@ -108,6 +118,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Moving platform type 2",
 		"color": Color(0.4, 0.4, 1.0),  # Blue
 		"sprite_id": null,
+		"z_order": 1000,  # Gameplay layer
 	},
 	EntityType.BOSS: {
 		"name": "Boss",
@@ -115,6 +126,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Boss entity",
 		"color": Color(1.0, 0.5, 0.0),  # Orange
 		"sprite_id": 0x181c3854,
+		"z_order": 980,  # Ghidra: 0x3d4
 	},
 	EntityType.BOSS_PART: {
 		"name": "Boss Part",
@@ -122,6 +134,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Boss sub-entity",
 		"color": Color(1.0, 0.6, 0.1),  # Orange
 		"sprite_id": 0x8818a018,
+		"z_order": 960,  # Ghidra: 0x3c0
 	},
 	EntityType.PARTICLE: {
 		"name": "Particle",
@@ -129,6 +142,7 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Particle effect",
 		"color": Color(1.0, 1.0, 1.0, 0.5),  # White translucent
 		"sprite_id": 0x168254b5,
+		"z_order": 959,  # Ghidra: 0x3bf (behind gameplay)
 	},
 	EntityType.SPARKLE: {
 		"name": "Sparkle",
@@ -136,8 +150,12 @@ const ENTITY_INFO: Dictionary = {
 		"desc": "Sparkle effect",
 		"color": Color(1.0, 1.0, 0.8, 0.5),  # Light yellow
 		"sprite_id": 0x6a351094,
+		"z_order": 959,  # Effects behind gameplay
 	},
 }
+
+# Default z_order for unknown entity types
+const DEFAULT_Z_ORDER := 1000
 
 # Layer colors for entity visualization
 const LAYER_COLORS: Dictionary = {
@@ -191,3 +209,9 @@ static func get_level_folder(level_index: int) -> String:
 static func get_sprite_id(entity_type: int):
 	var info = get_info(entity_type)
 	return info.get("sprite_id")
+
+## Get z_order for entity type (based on Ghidra InitEntitySprite calls)
+## z_order is hardcoded per entity type in the original game
+static func get_z_order(entity_type: int) -> int:
+	var info = get_info(entity_type)
+	return info.get("z_order", DEFAULT_Z_ORDER)
