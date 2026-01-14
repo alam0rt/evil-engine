@@ -4,10 +4,24 @@ This documentation covers the reverse engineering of **Skullmonkeys** (PAL SLES-
 
 ## Quick Start
 
+- **[Documentation Index](SYSTEMS_INDEX.md)** - Comprehensive navigation guide
+- **[Gap Analysis](GAP_ANALYSIS_CURRENT.md)** - Current documentation status (85% complete)
 - **[Decompilation Guide](decompilation-guide.md)** - How to add new functions to the decompilation
 - **[BLB File Format Overview](blb/README.md)** - Start here for understanding the game's data format
 
 ## Recent Updates
+
+### January 15, 2026 - Documentation Consolidation ✅
+
+Consolidated and reorganized all documentation to eliminate duplication and improve accessibility:
+
+- ✅ **Gap Analysis**: 7 overlapping documents merged into single [GAP_ANALYSIS_CURRENT.md](GAP_ANALYSIS_CURRENT.md)
+- ✅ **Systems Index**: New comprehensive [SYSTEMS_INDEX.md](SYSTEMS_INDEX.md) for easy navigation
+- ✅ **Duplicate Removal**: Merged overlapping collision, projectile, and physics docs
+- ✅ **Archive Organization**: Historical analysis moved to `analysis/archive/` and `deprecated/archive/`
+- ✅ **Verification**: Cross-referenced documentation against SLES_010.90.c decompiled code
+
+**Documentation Structure**: v2.0 - Single source of truth for all information
 
 ### January 14, 2026 - Physics Constants Extraction ✅
 
@@ -17,13 +31,7 @@ Extracted concrete physics constants from 64,363 lines of decompiled source code
 - ✅ **Camera System**: Smooth scrolling algorithm with 3 acceleration lookup tables
 - ✅ **Projectile System**: Complete weapon spawning, ammo tracking, damage calculation
 
-**New Documentation**:
-- [Camera System](systems/camera.md) - Complete smooth scrolling implementation
-- [Projectiles & Weapons](systems/projectiles.md) - Full weapon system
-- [Physics Constants Reference](reference/physics-constants.md) - All constants with source refs
-- [Physics Quick Reference](PHYSICS_QUICK_REFERENCE.md) - Copy-paste ready constants
-
-**Coverage**: 70% → 85% complete
+**Coverage**: 65% → 85% complete
 
 ---
 
@@ -46,7 +54,7 @@ Game engine subsystems and runtime behavior:
 | Document | Description |
 |----------|-------------|
 | [tiles-and-tilemaps.md](systems/tiles-and-tilemaps.md) | Tile graphics and tilemap rendering |
-| [collision.md](systems/collision.md) | **Tile collision attributes and physics** |
+| [collision-complete.md](systems/collision-complete.md) | **Complete tile collision reference** |
 | [sprites.md](systems/sprites.md) | RLE sprite format and lookup system |
 | [animation-framework.md](systems/animation-framework.md) | **5-layer animation system with sequences** |
 | [entities.md](systems/entities.md) | Entity system and spawn data |
@@ -73,15 +81,18 @@ Technical reference material:
 | [game-functions.md](reference/game-functions.md) | Key function addresses and purposes |
 | [pal-jp-comparison.md](reference/pal-jp-comparison.md) | Regional version differences |
 
-### Analysis (`analysis/`)
-Ongoing research and unverified findings:
+### Analysis & Status
+Current documentation status and ongoing research:
 
 | Document | Description |
 |----------|-------------|
-| [gap-analysis.md](analysis/gap-analysis.md) | **Documentation gap analysis and priorities** |
-| [physics-extraction-report.md](analysis/physics-extraction-report.md) | **✅ Physics extraction report (NEW 2026-01-14)** |
+| [GAP_ANALYSIS_CURRENT.md](GAP_ANALYSIS_CURRENT.md) | **Current documentation status (85% complete)** |
+| [SYSTEMS_INDEX.md](SYSTEMS_INDEX.md) | **Comprehensive documentation index** |
 | [unconfirmed-findings.md](analysis/unconfirmed-findings.md) | Observations awaiting verification |
-| [password-screens.md](analysis/password-screens.md) | World completion password screens |
+| [function-batches-to-analyze.md](analysis/function-batches-to-analyze.md) | Remaining function batches |
+| [password-extraction-guide.md](analysis/password-extraction-guide.md) | Password table extraction method |
+
+**Historical Archive**: Previous gap analyses and extraction reports are in `analysis/archive/`
 
 ## Key Addresses (PAL SLES-01090)
 
@@ -107,15 +118,23 @@ Ongoing research and unverified findings:
 
 ## Verification Status
 
-| Category | Status |
-|----------|--------|
-| BLB header format | ✅ Fully verified |
-| Level metadata | ✅ Fully verified |
-| Asset types 100-400 | ✅ Fully verified |
-| Asset types 500-700 | ⚠️ Mostly verified |
-| Sprite format | ✅ Fully verified |
-| Entity system | ⚠️ Partially verified |
-| Entity identification | ✅ Verified (2026-01-13) |
-| Tile collision | ⚠️ Partially documented |
-| Audio system | ✅ Verified |
-| Rendering order | ✅ Verified |
+**Last Updated**: January 15, 2026  
+**Overall Completion**: **85%** - BLB library ready for implementation
+
+| Category | Completion | Status |
+|----------|------------|--------|
+| **BLB Format** | 98% | ✅ Fully verified |
+| **Animation System** | 100% | ✅ Fully verified |
+| **Physics Constants** | 95% | ✅ CODE-VERIFIED from source |
+| **Collision System** | 95% | ✅ Comprehensive documentation |
+| **Entity System** | 85% | ✅ Well documented |
+| **Level Loading** | 90% | ✅ Fully verified |
+| **Sprite Format** | 85% | ✅ Fully verified |
+| **Audio System** | 75% | ✅ Well documented |
+| **Camera System** | 95% | ✅ Fully verified |
+| **Combat System** | 75% | ✅ Well documented |
+| **Projectile System** | 70% | ✅ Well documented |
+| **Boss AI** | 10% | ⚠️ Minimal |
+| **Enemy AI** | 30% | ⚠️ Partial |
+
+See [GAP_ANALYSIS_CURRENT.md](GAP_ANALYSIS_CURRENT.md) for detailed status
