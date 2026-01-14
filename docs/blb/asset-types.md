@@ -59,8 +59,10 @@ Offset  Size  Type   Description
 0x1A    2     u16    Special level ID (99=FINN/SEVN)
 0x1C    2     u16    VRAM rect count (matches Asset 502)
 0x1E    2     u16    Entity count (matches Asset 501)
-0x20    2     u16    Unknown (values 0-6)
+0x20    2     u16    World index (values 0-6) ⚠️ VESTIGIAL
 0x22    2     u16    Padding
+
+**Field 0x20 (World Index)**: Accumulated across level transitions to g_pPlayerState[4]. No runtime consumer found. Likely unused/vestigial from development.
 ```
 
 **Accessor**: `GetTotalTileCount` @ 0x8007b53c
@@ -155,13 +157,16 @@ Key fields:
 Per-tile collision and trigger data.
 
 ```
-0x00    u32              Flags
-0x04    u16              Level width
-0x06    u16              Level height
+0x00    u16              offset_x ⚠️ VESTIGIAL (usually 0)
+0x02    u16              offset_y ⚠️ VESTIGIAL (usually 0)
+0x04    u16              Level width (tiles)
+0x06    u16              Level height (tiles)
 0x08    width×height     Tile data (1 byte per tile)
 ```
 
-Values: 0=passable, 2=solid, 101=entity zone
+**Header Fields 0x00-0x03**: Copied to GameState+0x6C but no runtime consumer found. Likely unused offset values from development.
+
+**Tile Values**: 0=passable, 2=solid, 0x2A=death, 0x3D-0x41=wind, 0x51-0x7A=spawn zones. See [Collision System](../systems/tile-collision-complete.md) for complete reference.
 
 ### Asset 501 - Entity Placement Data (24 bytes each)
 
@@ -252,9 +257,22 @@ See [Audio](../systems/audio.md) for details.
 0x02    u16    Pan (0=center)
 ```
 
-### Asset 700 - Additional SPU Data
+### Asset 700 - Additional SPU Data ⚠️ POSSIBLY UNUSED
 
-Additional audio samples, appears in 9 of 26 levels.
+Appears in 9 of 26 levels: MENU, SCIE, TMPL, BOIL, FOOD, BRG1, GLID, CAVE, WEED.
+
+```
+0x00    u32    Entry count (always 1)
+0x04    u32    Reserved (0)
+0x08    u32    Entry ID (varies, not ASCII)
+0x0C    u32    Data size
+0x10    u32    Data offset (always 16)
+0x14+   var    4-byte entries (command, flags, param, reserved)
+```
+
+**Status**: Data format resembles SPU commands (0x80, 0xC0 bytes) but has invalid ADPCM filter values. No runtime consumer found at ctx[21]. Possibly unused/legacy data from development.
+
+**Analysis**: See [blb-unknown-fields-analysis.md](../analysis/blb-unknown-fields-analysis.md) for detailed investigation.
 
 ---
 
