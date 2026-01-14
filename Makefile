@@ -72,6 +72,20 @@ clean:
 	rm -rf $(BUILD_DIR)
 	rm -f /tmp/evil_*.ppm /tmp/evil_layers/*
 
+
+# handmade
+blb_parse:
+	@mkdir -p $(BUILD_DIR)
+	gcc -o $(BUILD_DIR)/blb_parse \
+	  src/tools/blb_parse.c \
+	  src/blb/blb.c \
+	  src/evil_engine.c \
+	  src/level/level.c \
+	  src/render/render.c \
+	  src/render/sprite.c \
+	  -Iinclude -Isrc -Isrc/psx -Isrc/blb -Isrc/level -Isrc/render \
+	  -std=c99 -lm
+
 # Help
 help:
 	@echo "Evil Engine - Demo Scenes"

@@ -61,5 +61,12 @@ blb_info = executable('blb_info',
   install: true,
 )
 
+blb_parse = executable('blb_parse',
+  'src/tools/blb_parse.c',
+  link_with: libevil,
+  include_directories: inc_dirs,
+  install: true,
+)
+
 # Note: GDExtension library includes blb_archive.c
 # which will be added once fully implemented
