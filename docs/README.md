@@ -15,7 +15,6 @@ The GAME.BLB archive format and its contents:
 | Document | Description |
 |----------|-------------|
 | [README.md](blb/README.md) | BLB format overview and file hierarchy |
-| [blb.hexpat](blb/blb.hexpat) | ImHex template for BLB file structure |
 | [header.md](blb/header.md) | BLB header structure (0x1000 bytes) |
 | [level-metadata.md](blb/level-metadata.md) | Level entry format (0x70 bytes each) |
 | [asset-types.md](blb/asset-types.md) | Complete asset type reference (100-700) |
@@ -43,6 +42,9 @@ Technical reference material:
 
 | Document | Description |
 |----------|-------------|
+| [items.md](reference/items.md) | **Complete item/powerup reference with verified addresses** |
+| [entity-types.md](reference/entity-types.md) | **Entity callback table (121 types) and type mappings** |
+| [cheat-codes.md](reference/cheat-codes.md) | **All 22 cheat codes with button sequences** |
 | [level-data-context.md](reference/level-data-context.md) | LevelDataContext structure (128 bytes) |
 | [game-functions.md](reference/game-functions.md) | Key function addresses and purposes |
 | [pal-jp-comparison.md](reference/pal-jp-comparison.md) | Regional version differences |
