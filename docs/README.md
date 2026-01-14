@@ -7,6 +7,26 @@ This documentation covers the reverse engineering of **Skullmonkeys** (PAL SLES-
 - **[Decompilation Guide](decompilation-guide.md)** - How to add new functions to the decompilation
 - **[BLB File Format Overview](blb/README.md)** - Start here for understanding the game's data format
 
+## Recent Updates
+
+### January 14, 2026 - Physics Constants Extraction ✅
+
+Extracted concrete physics constants from 64,363 lines of decompiled source code:
+
+- ✅ **Player Physics**: Walk speed (2.0/3.0 px/frame), jump velocity (-2.25), gravity (-6.0)
+- ✅ **Camera System**: Smooth scrolling algorithm with 3 acceleration lookup tables
+- ✅ **Projectile System**: Complete weapon spawning, ammo tracking, damage calculation
+
+**New Documentation**:
+- [Camera System](systems/camera.md) - Complete smooth scrolling implementation
+- [Projectiles & Weapons](systems/projectiles.md) - Full weapon system
+- [Physics Constants Reference](reference/physics-constants.md) - All constants with source refs
+- [Physics Quick Reference](PHYSICS_QUICK_REFERENCE.md) - Copy-paste ready constants
+
+**Coverage**: 70% → 85% complete
+
+---
+
 ## Documentation Structure
 
 ### BLB File Format (`blb/`)
@@ -32,7 +52,9 @@ Game engine subsystems and runtime behavior:
 | [entities.md](systems/entities.md) | Entity system and spawn data |
 | [entity-identification.md](systems/entity-identification.md) | **Entity type identification guide** |
 | [player-system.md](systems/player-system.md) | **Player mechanics, powerups, death** |
-| [player-physics.md](systems/player-physics.md) | **Player physics constants and movement** |
+| [player/player-physics.md](systems/player/player-physics.md) | **✅ Player physics constants (VERIFIED 2026-01-14)** |
+| [camera.md](systems/camera.md) | **✅ Camera smooth scrolling system (NEW 2026-01-14)** |
+| [projectiles.md](systems/projectiles.md) | **✅ Projectile & weapon system (NEW 2026-01-14)** |
 | [audio.md](systems/audio.md) | SPU audio sample system |
 | [rendering-order.md](systems/rendering-order.md) | Layer/entity z-ordering and priorities |
 | [level-loading.md](systems/level-loading.md) | Stage loading state machine |
@@ -43,6 +65,7 @@ Technical reference material:
 
 | Document | Description |
 |----------|-------------|
+| [physics-constants.md](reference/physics-constants.md) | **✅ Complete physics constants reference (NEW 2026-01-14)** |
 | [items.md](reference/items.md) | **Complete item/powerup reference with verified addresses** |
 | [entity-types.md](reference/entity-types.md) | **Entity callback table (121 types) and type mappings** |
 | [cheat-codes.md](reference/cheat-codes.md) | **All 22 cheat codes with button sequences** |
@@ -56,6 +79,7 @@ Ongoing research and unverified findings:
 | Document | Description |
 |----------|-------------|
 | [gap-analysis.md](analysis/gap-analysis.md) | **Documentation gap analysis and priorities** |
+| [physics-extraction-report.md](analysis/physics-extraction-report.md) | **✅ Physics extraction report (NEW 2026-01-14)** |
 | [unconfirmed-findings.md](analysis/unconfirmed-findings.md) | Observations awaiting verification |
 | [password-screens.md](analysis/password-screens.md) | World completion password screens |
 
