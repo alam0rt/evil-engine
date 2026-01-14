@@ -22,12 +22,6 @@ typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t; 
 */
 
-#define SECTOR_SIZE 0x1000
-#define HEADER_SIZE 2 * SECTOR_SIZE
-
-#define LEVEL_OFFSET 0x0
-#define LEVEL_SIZE 0xB60
-
 typedef struct {
     uint16_t primary_sector_offset;
     uint16_t primary_sector_count;
@@ -59,9 +53,25 @@ typedef struct {
 } LevelEntry;
 
 typedef struct {
+    uint16_t reserved; // always 0
+    uint16_t sector_count;
+    char name[5]; // was ID before
+    char id[3];
+    char path[16];
+} MovieEntry;
+
+#define SECTOR_SIZE 0x1000
+#define HEADER_SIZE 2 * SECTOR_SIZE
+
+#define LEVEL_OFFSET 0x0
+#define LEVEL_SIZE 0xB60
+#define MOVIE_OFFSET LEVEL_SIZE
+#define MOVIE_SIZE 0x168
+
+typedef struct {
     // 0x1000 bytes
     LevelEntry level_entries[LEVEL_SIZE / sizeof(LevelEntry)];
-    unsigned char data[HEADER_SIZE - sizeof(LevelEntry) * (LEVEL_SIZE / sizeof(LevelEntry))];
+    MovieEntry movie_table[MOVIE_SIZE / sizeof(MovieEntry)];
 } BLBHeader;
 
 typedef struct {
@@ -157,6 +167,17 @@ int main(int argc, char** argv) {
         printf("\tlevel_name: %s\n", blb->header.level_entries[i].level_name);
         printf("\n");
     }
+
+    printf("movie_table:\n");
+    for (size_t i = 0; i < (MOVIE_SIZE / sizeof(MovieEntry)); i++) {
+        printf("movie_entry %d:\n", i);
+        printf("\treserved: %X\n", blb->header.movie_table[i].reserved);
+        printf("\tsector_count: %X\n", blb->header.movie_table[i].sector_count);
+        printf("\tname: %s\n", blb->header.movie_table[i].name);
+        printf("\tid: %s\n", blb->header.movie_table[i].id);
+        printf("\tpath: %s\n", blb->header.movie_table[i].path);
+    }
+    printf("\n");
 
     /*
     unsigned char* data = blb_get(blb, LEVEL_SIZE, LEVEL_OFFSET);
