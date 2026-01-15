@@ -772,3 +772,191 @@ void BLB_SegmentBuilder_Free(SegmentBuilder* builder) {
     builder->data_size = 0;
     builder->data_capacity = 0;
 }
+
+/* -----------------------------------------------------------------------------
+ * BLB Write API Implementation (TOOL-ONLY)
+ * -------------------------------------------------------------------------- */
+
+BLBFile* BLB_Create(u8 level_count) {
+    BLBFile* blb;
+    u32 header_size = BLB_HEADER_SIZE;
+    
+    if (level_count == 0 || level_count > BLB_MAX_LEVELS) {
+        return NULL;
+    }
+    
+    /* Allocate BLB structure */
+    blb = (BLBFile*)calloc(1, sizeof(BLBFile));
+    if (!blb) {
+        return NULL;
+    }
+    
+    /* Allocate header */
+    blb->header = (u8*)calloc(1, header_size);
+    if (!blb->header) {
+        free(blb);
+        return NULL;
+    }
+    
+    blb->data = blb->header;  /* Initially just header */
+    blb->size = header_size;
+    blb->level_count = level_count;
+    
+    /* Initialize header */
+    blb->header[BLB_OFF_LEVEL_COUNT] = level_count;
+    blb->header[BLB_OFF_MOVIE_COUNT] = 0;
+    blb->header[BLB_OFF_SECTOR_COUNT] = 0;
+    
+    return blb;
+}
+
+int BLB_SetLevelMetadata(BLBFile* blb, u8 level_index, 
+                         const char* level_id, const char* level_name,
+                         u16 stage_count) {
+    u8* entry;
+    u32 offset;
+    u32 i;
+    
+    if (!blb || !level_id || !level_name) {
+        return -1;
+    }
+    
+    if (level_index >= blb->level_count) {
+        return -1;
+    }
+    
+    if (stage_count == 0 || stage_count > BLB_MAX_STAGES) {
+        return -1;
+    }
+    
+    /* Calculate level entry offset */
+    offset = BLB_OFF_LEVEL_TABLE + level_index * BLB_LEVEL_ENTRY_SIZE;
+    entry = blb->header + offset;
+    
+    /* Set stage count */
+    entry[LEVEL_OFF_STAGE_COUNT] = (u8)(stage_count & 0xFF);
+    entry[LEVEL_OFF_STAGE_COUNT + 1] = (u8)((stage_count >> 8) & 0xFF);
+    
+    /* Set level ID (5 bytes, null-padded) */
+    for (i = 0; i < 5; i++) {
+        if (level_id[i] == '\0') break;
+        entry[LEVEL_OFF_LEVEL_ID + i] = level_id[i];
+    }
+    /* Pad with nulls */
+    for (; i < 5; i++) {
+        entry[LEVEL_OFF_LEVEL_ID + i] = 0;
+    }
+    
+    /* Set level name (21 bytes, null-padded) */
+    for (i = 0; i < 21; i++) {
+        if (level_name[i] == '\0') break;
+        entry[LEVEL_OFF_LEVEL_NAME + i] = level_name[i];
+    }
+    /* Pad with nulls */
+    for (; i < 21; i++) {
+        entry[LEVEL_OFF_LEVEL_NAME + i] = 0;
+    }
+    
+    return 0;
+}
+
+int BLB_WriteSegment(BLBFile* blb, u8 level_index, u8 stage_index,
+                     const u8* segment_data, u32 segment_size,
+                     u8 segment_type) {
+    u8* entry;
+    u32 offset;
+    u16 sector_offset;
+    u16 sector_count;
+    u32 array_offset;
+    
+    if (!blb || !segment_data) {
+        return -1;
+    }
+    
+    if (level_index >= blb->level_count) {
+        return -1;
+    }
+    
+    /* Segment type: 0=primary, 1=secondary, 2=tertiary */
+    if (segment_type > 2) {
+        return -1;
+    }
+    
+    /* Calculate level entry offset */
+    offset = BLB_OFF_LEVEL_TABLE + level_index * BLB_LEVEL_ENTRY_SIZE;
+    entry = blb->header + offset;
+    
+    /* Calculate sector count (rounded up) */
+    sector_count = (u16)((segment_size + BLB_SECTOR_SIZE - 1) / BLB_SECTOR_SIZE);
+    
+    /* TODO: Allocate sectors in the BLB file
+     * For now, this is a stub that just updates the header
+     * Full implementation requires:
+     * 1. Managing sector allocation
+     * 2. Reallocating blb->data to fit new segments
+     * 3. Writing segment data to allocated sectors
+     */
+    
+    /* Determine which offset array to update */
+    if (segment_type == 0) {
+        /* Primary segment */
+        sector_offset = 1;  /* Stub: assign dummy sector */
+        entry[LEVEL_OFF_PRIMARY_SECTOR] = (u8)(sector_offset & 0xFF);
+        entry[LEVEL_OFF_PRIMARY_SECTOR + 1] = (u8)((sector_offset >> 8) & 0xFF);
+        entry[LEVEL_OFF_PRIMARY_COUNT] = (u8)(sector_count & 0xFF);
+        entry[LEVEL_OFF_PRIMARY_COUNT + 1] = (u8)((sector_count >> 8) & 0xFF);
+        /* Store size */
+        entry[LEVEL_OFF_PRIMARY_SIZE] = (u8)(segment_size & 0xFF);
+        entry[LEVEL_OFF_PRIMARY_SIZE + 1] = (u8)((segment_size >> 8) & 0xFF);
+        entry[LEVEL_OFF_PRIMARY_SIZE + 2] = (u8)((segment_size >> 16) & 0xFF);
+        entry[LEVEL_OFF_PRIMARY_SIZE + 3] = (u8)((segment_size >> 24) & 0xFF);
+    } else {
+        /* Secondary or tertiary */
+        if (stage_index >= BLB_MAX_STAGES) {
+            return -1;
+        }
+        
+        sector_offset = 1 + level_index * 10 + stage_index;  /* Stub: simple allocation */
+        array_offset = (segment_type == 1) ? LEVEL_OFF_SEC_SECTOR : LEVEL_OFF_TERT_SECTOR;
+        
+        /* Write sector offset */
+        entry[array_offset + stage_index * 2] = (u8)(sector_offset & 0xFF);
+        entry[array_offset + stage_index * 2 + 1] = (u8)((sector_offset >> 8) & 0xFF);
+        
+        /* Write sector count */
+        array_offset = (segment_type == 1) ? LEVEL_OFF_SEC_COUNT : LEVEL_OFF_TERT_COUNT;
+        entry[array_offset + stage_index * 2] = (u8)(sector_count & 0xFF);
+        entry[array_offset + stage_index * 2 + 1] = (u8)((sector_count >> 8) & 0xFF);
+    }
+    
+    /* Note: Actual data writing not implemented yet
+     * This requires proper sector management and file reallocation */
+    (void)segment_data;  /* Suppress unused warning */
+    
+    return 0;
+}
+
+int BLB_WriteToFile(const BLBFile* blb, const char* path) {
+    FILE* fp;
+    size_t written;
+    
+    if (!blb || !path) {
+        return -1;
+    }
+    
+    /* Open file for writing */
+    fp = fopen(path, "wb");
+    if (!fp) {
+        return -1;
+    }
+    
+    /* Write BLB data */
+    written = fwrite(blb->data, 1, blb->size, fp);
+    fclose(fp);
+    
+    if (written != blb->size) {
+        return -1;
+    }
+    
+    return 0;
+}

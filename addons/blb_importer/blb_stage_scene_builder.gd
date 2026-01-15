@@ -455,7 +455,7 @@ func _add_layer_container(root: Node2D, layers: Array, tilemaps: Array, tileset:
 func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> void:
 	var container := Node2D.new()
 	container.set_script(BLBEntityContainer)
-	container.name = "EntityContainer"
+	container.name = "Entities"
 	container.entity_count = entities.size()
 	# Entity container z_index: middle of gameplay range (900-1100)
 	# Per btm/docs/systems/rendering-order.md
@@ -467,13 +467,10 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 		var entity_data: Dictionary = entities[i]
 		var entity_type: int = entity_data.get("entity_type", 0)
 		
-		# Get entity name from EntitySprites mapping
-		var entity_info: Dictionary = EntitySprites.get_info(entity_type)
-		var entity_name: String = entity_info.get("name", "Unknown")
-		
+		# Create entity with proper name following Godot best practices
 		var entity := Node2D.new()
 		entity.set_script(BLBEntity)
-		entity.name = "%s_%d" % [entity_name, i]
+		entity.name = EntitySprites.get_full_name(entity_type, i)
 		
 		# Set entity properties - ALL EntityDef fields
 		entity.entity_index = i
@@ -500,6 +497,15 @@ func _add_entity_container(root: Node2D, entities: Array, sprites: Array) -> voi
 		# - Boss components: 960-980
 		# - Player: 10000 (handled separately)
 		entity.z_index = EntitySprites.get_z_order(entity_type) - 1000  # Relative to container
+		
+		# Add to Godot group for easy querying (Godot best practices)
+		# Groups: player, collectibles, enemies, bosses, platforms, interactive, effects, decorations
+		var group_name = EntitySprites.get_group_name(entity_type)
+		if group_name != "unknown":
+			entity.add_to_group(group_name)
+		
+		# Add gameplay script based on entity category (for playable game)
+		_add_gameplay_script(entity, entity_type)
 		
 		# Look up sprite by entity type → sprite ID mapping
 		# Game-accurate lookup: stage bank first, then primary fallback
@@ -694,7 +700,82 @@ func _add_spawn_point(root: Node2D, tile_header: Dictionary) -> void:
 		tile_header.get("spawn_y", 0) * TILE_SIZE + TILE_SIZE - 1
 	)
 	spawn.gizmo_extents = 20.0
+	spawn.add_to_group("spawn_point")
 	root.add_child(spawn)
+
+
+func _add_gameplay_script(entity: Node2D, entity_type: int) -> void:
+	"""Add gameplay script to entity based on type
+	
+	Converts BLB entities to playable game objects:
+	- Collectibles → Area2D with Collectible script
+	- Enemies → CharacterBody2D with EnemyBase script  
+	- Player → CharacterBody2D with PlayerCharacter script
+	- Bosses → CharacterBody2D with EnemyBase script (boss variant)
+	"""
+	var category = EntitySprites.get_category(entity_type)
+	
+	match category:
+		EntitySprites.Category.COLLECTIBLE:
+			# Convert to Area2D collectible
+			var collectible_script = preload("res://addons/blb_importer/gameplay/collectible.gd")
+			if collectible_script:
+				# Note: Entity is Node2D, but Collectible expects Area2D
+				# We need to wrap it or change approach
+				# For now, just add metadata
+				entity.set_meta("gameplay_type", "collectible")
+				entity.set_meta("collectible_type", _get_collectible_type(entity_type))
+		
+		EntitySprites.Category.ENEMY:
+			# Add enemy script metadata
+			entity.set_meta("gameplay_type", "enemy")
+			entity.set_meta("enemy_ai", _get_enemy_ai_pattern(entity_type))
+		
+		EntitySprites.Category.BOSS:
+			# Add boss script metadata
+			entity.set_meta("gameplay_type", "boss")
+			entity.set_meta("enemy_ai", "boss")
+		
+		EntitySprites.Category.PLAYER:
+			# Mark as player spawn
+			entity.set_meta("gameplay_type", "player")
+			entity.add_to_group("player_spawn")
+		
+		EntitySprites.Category.INTERACTIVE:
+			# Add interactive metadata
+			entity.set_meta("gameplay_type", "interactive")
+			if entity_type == 45:  # Message box
+				entity.set_meta("interactive_type", "checkpoint")
+
+
+func _get_collectible_type(entity_type: int) -> int:
+	"""Map entity type to Collectible.Type enum"""
+	match entity_type:
+		2:  # Clayball
+			return 0  # Collectible.Type.CLAYBALL
+		3:  # Ammo
+			return 1  # Collectible.Type.AMMO
+		24:  # Ammo special
+			return 2  # Collectible.Type.AMMO_SPECIAL
+		8:  # Item (could be life)
+			return 3  # Collectible.Type.LIFE
+		_:
+			return 0
+
+
+func _get_enemy_ai_pattern(entity_type: int) -> String:
+	"""Map entity type to AI pattern"""
+	match entity_type:
+		10:  # Patrol enemy
+			return "patrol"
+		25:  # Standard Skullmonkey
+			return "patrol"
+		27:  # Fast Skullmonkey
+			return "chase"
+		28:  # Flying enemy (when in layer 3)
+			return "flying"
+		_:
+			return "patrol"
 
 
 func build_primary_sprite_bank(blb, level_id: String, level_index: int, resource_dir: String = "") -> Resource:

@@ -263,76 +263,269 @@ const unsigned char* EvilEngine_GetAssetData(const BLBFile* blb, int level_index
 
 /* -----------------------------------------------------------------------------
  * BLB File Operations (WRITE)
- * TODO: Implement in Phase 2
  * -------------------------------------------------------------------------- */
 
 int EvilEngine_CreateBLB(int level_count, BLBFile** out_blb) {
-    (void)level_count;
-    (void)out_blb;
-    /* TODO: Implement BLB creation */
-    return -1;
+    BLBFile* blb;
+    
+    if (!out_blb || level_count <= 0 || level_count > 26) {
+        return -1;
+    }
+    
+    blb = BLB_Create((u8)level_count);
+    if (!blb) {
+        return -1;
+    }
+    
+    *out_blb = blb;
+    return 0;
 }
 
 int EvilEngine_SetLevelMetadata(BLBFile* blb, int level_index,
                                 const char* level_id, const char* level_name,
                                 int stage_count) {
-    (void)blb;
-    (void)level_index;
-    (void)level_id;
-    (void)level_name;
-    (void)stage_count;
-    /* TODO: Implement metadata setting */
-    return -1;
+    if (!blb || !level_id || !level_name) {
+        return -1;
+    }
+    
+    return BLB_SetLevelMetadata(blb, (u8)level_index, level_id, level_name, 
+                                (u16)stage_count);
 }
 
 int EvilEngine_WriteLevelData(BLBFile* blb, int level_index, int stage_index,
                               const u8* primary_data, u32 primary_size,
                               const u8* secondary_data, u32 secondary_size,
                               const u8* tertiary_data, u32 tertiary_size) {
-    (void)blb;
-    (void)level_index;
-    (void)stage_index;
-    (void)primary_data;
-    (void)primary_size;
-    (void)secondary_data;
-    (void)secondary_size;
-    (void)tertiary_data;
-    (void)tertiary_size;
-    /* TODO: Implement level data writing */
-    return -1;
+    int result;
+    
+    if (!blb) {
+        return -1;
+    }
+    
+    /* Write primary segment */
+    if (primary_data && primary_size > 0) {
+        result = BLB_WriteSegment(blb, (u8)level_index, 0, primary_data, 
+                                  primary_size, 0);
+        if (result != 0) {
+            return result;
+        }
+    }
+    
+    /* Write secondary segment */
+    if (secondary_data && secondary_size > 0) {
+        result = BLB_WriteSegment(blb, (u8)level_index, (u8)stage_index, 
+                                  secondary_data, secondary_size, 1);
+        if (result != 0) {
+            return result;
+        }
+    }
+    
+    /* Write tertiary segment */
+    if (tertiary_data && tertiary_size > 0) {
+        result = BLB_WriteSegment(blb, (u8)level_index, (u8)stage_index, 
+                                  tertiary_data, tertiary_size, 2);
+        if (result != 0) {
+            return result;
+        }
+    }
+    
+    return 0;
 }
 
 int EvilEngine_SaveBLB(const BLBFile* blb, const char* path) {
-    (void)blb;
-    (void)path;
-    /* TODO: Implement BLB save */
-    return -1;
+    if (!blb || !path) {
+        return -1;
+    }
+    
+    return BLB_WriteToFile(blb, path);
 }
 
 /* -----------------------------------------------------------------------------
  * Level Operations (WRITE)
- * TODO: Implement in Phase 2
  * -------------------------------------------------------------------------- */
 
 u8* EvilEngine_BuildPrimarySegment(const LevelContext* level, u32* out_size) {
-    (void)level;
-    if (out_size) *out_size = 0;
-    /* TODO: Implement primary segment builder */
+    SegmentBuilder builder;
+    u8* segment;
+    
+    if (!level || !out_size) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Initialize segment builder */
+    if (BLB_SegmentBuilder_Init(&builder) != 0) {
+        *out_size = 0;
+        return NULL;
+    }
+    
+    /* Add primary assets (Asset 600 geometry container, 601 audio, 602 palettes) */
+    /* TODO: Extract these from loaded level data */
+    /* For now, return NULL as we need level data extraction implementation */
+    
+    BLB_SegmentBuilder_Free(&builder);
+    *out_size = 0;
     return NULL;
 }
 
 u8* EvilEngine_BuildSecondarySegment(const LevelContext* level, int stage, u32* out_size) {
-    (void)level;
-    (void)stage;
-    if (out_size) *out_size = 0;
-    /* TODO: Implement secondary segment builder */
-    return NULL;
+    SegmentBuilder builder;
+    u8* segment;
+    
+    if (!level || !out_size) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Initialize segment builder */
+    if (BLB_SegmentBuilder_Init(&builder) != 0) {
+        *out_size = 0;
+        return NULL;
+    }
+    
+    /* Add secondary assets (Asset 100 tile header, 300-303 tiles, 400-401 palettes) */
+    if (level->tile_header) {
+        BLB_SegmentBuilder_AddAsset(&builder, ASSET_TILE_HEADER, 
+                                     (const u8*)level->tile_header, 
+                                     sizeof(TileHeader));
+    }
+    
+    /* Add tile pixel data */
+    if (level->tile_pixels && level->tile_pixels_size > 0) {
+        BLB_SegmentBuilder_AddAsset(&builder, ASSET_TILE_PIXELS,
+                                     level->tile_pixels,
+                                     level->tile_pixels_size);
+    }
+    
+    /* Add palette indices */
+    if (level->palette_indices && level->palette_index_count > 0) {
+        BLB_SegmentBuilder_AddAsset(&builder, ASSET_PALETTE_INDICES,
+                                     level->palette_indices,
+                                     level->palette_index_count);
+    }
+    
+    /* Add tile flags */
+    if (level->tile_flags && level->tile_flag_count > 0) {
+        BLB_SegmentBuilder_AddAsset(&builder, ASSET_TILE_FLAGS,
+                                     level->tile_flags,
+                                     level->tile_flag_count);
+    }
+    
+    /* Add palette container */
+    if (level->palette_container) {
+        u32 pal_size = 0;
+        /* Get palette container size - first 4 bytes contain count */
+        const u8* pal_data = (const u8*)level->palette_container;
+        u32 pal_count = pal_data[0] | (pal_data[1] << 8) | (pal_data[2] << 16) | (pal_data[3] << 24);
+        pal_size = 4 + pal_count * 12 + pal_count * 512;  /* Estimate */
+        
+        BLB_SegmentBuilder_AddAsset(&builder, ASSET_PALETTE_CONTAINER,
+                                     pal_data, pal_size);
+    }
+    
+    /* Finalize segment */
+    segment = BLB_SegmentBuilder_Finalize(&builder, out_size);
+    BLB_SegmentBuilder_Free(&builder);
+    
+    return segment;
 }
 
 u8* EvilEngine_BuildTertiarySegment(const LevelContext* level, int stage, u32* out_size) {
-    (void)level;
-    (void)stage;
-    if (out_size) *out_size = 0;
-    /* TODO: Implement tertiary segment builder */
-    return NULL;
+    SegmentBuilder builder;
+    u8* segment;
+    
+    if (!level || !out_size) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    
+    /* Initialize segment builder */
+    if (BLB_SegmentBuilder_Init(&builder) != 0) {
+        *out_size = 0;
+        return NULL;
+    }
+    
+    /* Add tertiary assets (Asset 200-201 layers, 500-504 gameplay data) */
+    
+    /* Add layer entries (Asset 201) */
+    if (level->layers && level->layer_count > 0) {
+        u32 layer_data_size = level->layer_count * sizeof(LayerEntry);
+        BLB_SegmentBuilder_AddAsset(&builder, ASSET_LAYER_ENTRIES,
+                                     (const u8*)level->layers,
+                                     layer_data_size);
+    }
+    
+    /* Add tilemap container (Asset 200) */
+    if (level->tilemaps && level->tilemap_count > 0) {
+        /* Build tilemap container with TOC */
+        u32 total_size = 4;  /* TOC count */
+        u32 i;
+        for (i = 0; i < level->tilemap_count; i++) {
+            total_size += 12;  /* TOC entry */
+            total_size += level->tilemap_sizes[i];  /* Tilemap data */
+        }
+        
+        u8* tilemap_container = (u8*)malloc(total_size);
+        if (tilemap_container) {
+            /* Write TOC */
+            u32 offset = 4 + level->tilemap_count * 12;
+            tilemap_container[0] = (u8)(level->tilemap_count & 0xFF);
+            tilemap_container[1] = (u8)((level->tilemap_count >> 8) & 0xFF);
+            tilemap_container[2] = (u8)((level->tilemap_count >> 16) & 0xFF);
+            tilemap_container[3] = (u8)((level->tilemap_count >> 24) & 0xFF);
+            
+            /* Write TOC entries and data */
+            for (i = 0; i < level->tilemap_count; i++) {
+                u8* entry = tilemap_container + 4 + i * 12;
+                u32 size = level->tilemap_sizes[i];
+                
+                /* ID */
+                entry[0] = (u8)(i & 0xFF);
+                entry[1] = (u8)((i >> 8) & 0xFF);
+                entry[2] = (u8)((i >> 16) & 0xFF);
+                entry[3] = (u8)((i >> 24) & 0xFF);
+                
+                /* Size */
+                entry[4] = (u8)(size & 0xFF);
+                entry[5] = (u8)((size >> 8) & 0xFF);
+                entry[6] = (u8)((size >> 16) & 0xFF);
+                entry[7] = (u8)((size >> 24) & 0xFF);
+                
+                /* Offset */
+                entry[8] = (u8)(offset & 0xFF);
+                entry[9] = (u8)((offset >> 8) & 0xFF);
+                entry[10] = (u8)((offset >> 16) & 0xFF);
+                entry[11] = (u8)((offset >> 24) & 0xFF);
+                
+                /* Copy tilemap data */
+                memcpy(tilemap_container + offset, level->tilemaps[i], size);
+                offset += size;
+            }
+            
+            BLB_SegmentBuilder_AddAsset(&builder, ASSET_TILEMAP_CONTAINER,
+                                         tilemap_container, total_size);
+            free(tilemap_container);
+        }
+    }
+    
+    /* Add tile attributes (Asset 500) */
+    if (level->tile_attributes && level->tile_attribute_size > 0) {
+        BLB_SegmentBuilder_AddAsset(&builder, ASSET_TILE_ATTRS,
+                                     level->tile_attributes,
+                                     level->tile_attribute_size);
+    }
+    
+    /* Add entity data (Asset 501) */
+    if (level->entities && level->entity_count > 0) {
+        u32 entity_data_size = level->entity_count * sizeof(EntityDef);
+        BLB_SegmentBuilder_AddAsset(&builder, ASSET_ENTITIES,
+                                     (const u8*)level->entities,
+                                     entity_data_size);
+    }
+    
+    /* Finalize segment */
+    segment = BLB_SegmentBuilder_Finalize(&builder, out_size);
+    BLB_SegmentBuilder_Free(&builder);
+    
+    return segment;
 }

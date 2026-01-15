@@ -10,6 +10,7 @@ build/
 
 # nix
 .direnv/*
+.direnv/bin/nix-direnv-reload
 .cursor
 
 # Game assets (copyrighted, do not commit)
