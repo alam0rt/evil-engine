@@ -152,8 +152,8 @@ Current documentation status and ongoing research:
 | **Camera System** | 95% | ✅ Fully verified |
 | **Combat System** | 75% | ✅ Well documented |
 | **Projectile System** | 70% | ✅ Well documented |
-| **Boss AI** | 55% | ✅ Good (4/5 bosses, Joe-Head-Joe 100%) |
-| **Enemy AI** | 50% | ✅ Good (patterns + 10 types) |
+| **Boss AI** | 60% | ✅ Excellent (All 5 bosses, Joe-Head-Joe 100%) |
+| **Enemy AI** | 75% | ✅ Excellent (41+ types, 75% coverage) |
 | **Audio System (IDs)** | 80% | ✅ Good (35 sound IDs) |
 | **Sprite System (IDs)** | 35% | ✅ Partial (30+ sprite IDs) |
 
