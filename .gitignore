@@ -10,6 +10,7 @@ build/
 
 # nix
 .direnv/*
+.cursor
 
 # Game assets (copyrighted, do not commit)
 # Source BLB files
