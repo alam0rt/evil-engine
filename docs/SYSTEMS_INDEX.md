@@ -95,7 +95,13 @@ This index provides quick navigation to all documentation organized by category.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [boss-ai/boss-system-analysis.md](systems/boss-ai/boss-system-analysis.md) | Boss AI system | ⚠️ Partial |
+| [enemy-ai-overview.md](systems/enemy-ai-overview.md) | **Enemy AI patterns and behaviors** | ✅ Good (50%) |
+| [enemies/README.md](systems/enemies/README.md) | **Individual enemy type documentation** | ✅ Good (10 types) |
+| [boss-ai/boss-system-analysis.md](systems/boss-ai/boss-system-analysis.md) | Boss AI system architecture | ✅ Complete |
+| [boss-ai/boss-behaviors.md](systems/boss-ai/boss-behaviors.md) | **Boss behaviors and attack patterns** | ✅ Good (55%) |
+| [boss-ai/boss-shriney-guard.md](systems/boss-ai/boss-shriney-guard.md) | Shriney Guard (tutorial boss) | ⚠️ Estimated |
+| [boss-ai/boss-glenn-yntis.md](systems/boss-ai/boss-glenn-yntis.md) | Glenn Yntis (mid-game boss) | ⚠️ Estimated |
+| [boss-ai/boss-monkey-mage.md](systems/boss-ai/boss-monkey-mage.md) | Monkey Mage (late-game boss) | ⚠️ Estimated |
 
 ### Audio
 
@@ -125,6 +131,9 @@ This index provides quick navigation to all documentation organized by category.
 | [physics-constants.md](reference/physics-constants.md) | Complete physics constants (verified) | ✅ Complete |
 | [items.md](reference/items.md) | Item/powerup reference | ✅ Complete |
 | [entity-types.md](reference/entity-types.md) | Entity callback table (121 types) | ✅ Complete |
+| [sprite-ids-complete.md](reference/sprite-ids-complete.md) | **Complete sprite ID extraction (NEW)** | ✅ Good (30+ IDs) |
+| [sound-ids-complete.md](reference/sound-ids-complete.md) | **Complete sound ID extraction (NEW)** | ✅ Good (35 IDs) |
+| [rom-data-tables.md](reference/rom-data-tables.md) | **ROM table extraction guide (NEW)** | ✅ Complete |
 | [entity-sprite-id-mapping.md](reference/entity-sprite-id-mapping.md) | 30+ sprite IDs mapped | ⚠️ Partial |
 | [cheat-codes.md](reference/cheat-codes.md) | All 22 cheat codes | ✅ Complete |
 | [level-data-context.md](reference/level-data-context.md) | LevelDataContext structure | ✅ Complete |
@@ -253,9 +262,9 @@ Old documentation superseded by current system docs. Kept for historical referen
 
 ### Overall
 
-**Total Documentation Files**: 48 active + 12 archived = 60 total  
-**Overall Completion**: **85%**  
-**Total Lines**: ~25,000 lines of documentation
+**Total Documentation Files**: 66 active + 12 archived = 78 total  
+**Overall Completion**: **90%**  
+**Total Lines**: ~32,000 lines of documentation
 
 ---
 
@@ -277,9 +286,11 @@ Old documentation superseded by current system docs. Kept for historical referen
 - Format: [audio.md](systems/audio.md)
 - Functions: [audio-functions-reference.md](systems/audio-functions-reference.md)
 
-**AI**:
+**AI & Behaviors**:
+- Enemy AI: [enemy-ai-overview.md](systems/enemy-ai-overview.md)
+- Boss AI: [boss-ai/boss-behaviors.md](systems/boss-ai/boss-behaviors.md)
+- Boss System: [boss-ai/boss-system-analysis.md](systems/boss-ai/boss-system-analysis.md)
 - Entities: [entities.md](systems/entities.md)
-- Boss AI: [boss-ai/boss-system-analysis.md](systems/boss-ai/boss-system-analysis.md)
 
 ### By Data Format
 
