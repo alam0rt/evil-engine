@@ -15,9 +15,13 @@ Skullmonkeys has **no memory card support**. Progress is saved via 12-button pas
 | 3-15 | Various | Worlds 3-15 complete | Magenta |
 | 16 | 0x047DC800 | YOU WIN | Magenta |
 
-## Password Display Method
+## Password System Architecture
 
-**CONFIRMED**: Passwords are **pre-rendered in tilemaps**, not dynamically generated.
+**TWO COMPONENTS**:
+1. **Password Generation**: Encodes player state into 12-button sequence
+2. **Password Display**: Pre-rendered tilemap screens show the generated password
+
+**BOTH systems exist** - passwords are generated from state, then displayed on pre-rendered screens!
 
 ### Evidence:
 1. All password screens have identical sprite/palette sizes (52,368 bytes for sprites)
