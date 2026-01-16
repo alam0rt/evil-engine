@@ -4,16 +4,19 @@
 **BLB Type**: 24  
 **Callback**: 0x8007f460  
 **Sprite ID**: Unknown (needs extraction)  
-**Category**: Collectible (Ammo)  
+**Category**: Collectible (Ammo/Swirl)  
 **Count**: 227 instances
 
 ---
 
 ## Overview
 
-Special Ammo pickups grant ammunition for the player's projectile weapons.
+Special pickups that grant Swirls (bonus room unlock) or Green Bullets.
 
-**Gameplay Function**: Ammo replenishment for Swirly Q's or Green Bullets
+> **Note**: Previous documentation incorrectly called Swirls "weapon ammo".
+> Swirls unlock bonus rooms; Green Bullets are the actual projectile ammo.
+
+**Gameplay Function**: Swirl or Green Bullet replenishment
 
 ---
 
@@ -27,21 +30,22 @@ Special Ammo pickups grant ammunition for the player's projectile weapons.
 
 ---
 
-## Ammo Types
+## Pickup Types
 
-Based on projectile system:
+Based on game systems:
 
-**Primary Ammo** (Swirly Q's):
+**Swirls** (Bonus Room Unlock):
 - Storage: `g_pPlayerState[0x13]`
 - Max: 20
-- Effect: +1 to +5 ammo
+- Purpose: Collect 3 → bonus room portal unlocks
+- NOT weapon ammo!
 
-**Secondary Ammo** (Green Bullets):
+**Green Bullets** (Projectile Ammo):
 - Storage: `g_pPlayerState[0x1A]`
 - Max: 3
-- Effect: +1 ammo
+- Purpose: Actual projectile weapon ammo
 
-**Entity Type 24** likely grants Swirly Q ammo (primary weapon)
+**Entity Type 24** likely grants Swirls or Green Bullets based on variant
 
 ---
 
@@ -51,13 +55,14 @@ Based on projectile system:
 // When player touches ammo pickup
 if (CheckEntityCollision(player, ammo_pickup)) {
     // Determine ammo type
-    int ammo_type = ammo_pickup->subtype;
+    int pickup_type = pickup->subtype;
     
-    // Grant ammo
-    if (ammo_type == AMMO_SWIRLY_Q) {
+    // Grant item
+    if (pickup_type == PICKUP_SWIRL) {
         int current = g_pPlayerState[0x13];
-        g_pPlayerState[0x13] = min(current + 5, 20);  // +5, max 20
-    } else if (ammo_type == AMMO_GREEN_BULLET) {
+        g_pPlayerState[0x13] = min(current + 1, 20);  // +1 swirl, max 20
+        g_pPlayerState[0x1b]++;  // Also increment total for secret ending
+    } else if (pickup_type == PICKUP_GREEN_BULLET) {
         int current = g_pPlayerState[0x1A];
         g_pPlayerState[0x1A] = min(current + 1, 3);   // +1, max 3
     }
@@ -66,7 +71,7 @@ if (CheckEntityCollision(player, ammo_pickup)) {
     PlaySoundEffect(0x7003474c, pan, 0);
     
     // Remove pickup
-    RemoveEntity(ammo_pickup);
+    RemoveEntity(pickup);
 }
 ```
 
@@ -76,23 +81,22 @@ if (CheckEntityCollision(player, ammo_pickup)) {
 
 ```gdscript
 extends Area2D
-class_name AmmoPickup
+class_name SpecialPickup
 
-enum AmmoType { SWIRLY_Q, GREEN_BULLET }
+enum PickupType { SWIRL, GREEN_BULLET }
 
-@export var ammo_type: AmmoType = AmmoType.SWIRLY_Q
-@export var ammo_amount: int = 5
+@export var pickup_type: PickupType = PickupType.SWIRL
 
 func _ready() -> void:
     body_entered.connect(_on_player_touch)
 
 func _on_player_touch(body: Node2D) -> void:
     if body.is_in_group("player"):
-        match ammo_type:
-            AmmoType.SWIRLY_Q:
-                body.add_swirly_q_ammo(ammo_amount)
-            AmmoType.GREEN_BULLET:
-                body.add_green_bullet_ammo(1)
+        match pickup_type:
+            PickupType.SWIRL:
+                body.add_swirl(1)  # Bonus room collectible
+            PickupType.GREEN_BULLET:
+                body.add_green_bullet(1)  # Actual ammo
         
         AudioManager.play_sound(0x7003474c)
         queue_free()

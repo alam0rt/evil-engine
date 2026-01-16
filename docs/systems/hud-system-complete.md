@@ -13,7 +13,7 @@ The HUD (Heads-Up Display) shows player stats during gameplay and pause menu. Th
 **Display Elements**:
 - Lives count
 - Clayball/orb count
-- Checkpoint/swirl count (Swirly Q ammo)
+- Swirl count (bonus room unlock, NOT weapon ammo)
 - 1970 icons (×3)
 - Green bullets (×3)
 - 7 powerup icons

@@ -15,17 +15,17 @@ The global player state is at `g_pPlayerState` (0x8009DC20). This structure pers
 | 0x10 | u8 | level_complete | Level complete flag |
 | 0x11 | u8 | lives | Current lives (default: 5) |
 | 0x12 | u8 | orb_count | Clay/orb count (100 → 1up) |
-| 0x13 | u8 | checkpoint_count | Swirl/checkpoint count (3 → bonus room) |
-| 0x14 | u8 | phoenix_hands | Bird powerup count (max 7) |
-| 0x15 | u8 | phart_heads | Head powerup count (max 7) |
-| 0x16 | u8 | universe_enemas | Fart Clone powerup count (max 7) |
+| 0x13 | u8 | **green_bullets** | **Projectile ammo (Circle button, max 20)** |
+| 0x14 | u8 | phoenix_hands | Homing bird attack (L1, max 7) |
+| 0x15 | u8 | phart_heads | Ghostly clone scout (L2, max 7) |
+| 0x16 | u8 | universe_enemas | Screen-wide destruction (R1, max 7) |
 | 0x17 | u8 | **powerup_flags** | Active powerup bitmask |
 | 0x18 | u8 | **shrink_mode** | Player is shrunk (mini mode) |
 | 0x19 | u8 | icon_1970_count | "1970" icon count (max 3) |
-| 0x1A | u8 | green_bullets | Energy Ball count (max 3) |
-| 0x1B | u8 | unknown_1b | |
-| 0x1C | u8 | super_willies | Super Power count (max 7) |
-| 0x1D | u8 | unknown_1d | Cleared on death |
+| 0x1A | u8 | **hamster_count** | **Orbiting shield (3 extra hits, max 3)** |
+| 0x1B | u8 | total_swirly_qs | Cumulative Swirly Q count (48+ for secret ending) |
+| 0x1C | u8 | super_willies | Auto-collect items (R2, max 7) |
+| 0x1D | u8 | boss_hp | Boss HP counter (5 for most bosses) |
 
 ### Powerup Flags (offset 0x17)
 

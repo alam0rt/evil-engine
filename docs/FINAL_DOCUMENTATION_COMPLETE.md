@@ -140,7 +140,7 @@
 
 **Player State Field**:
 - **0x1b**: Total Swirly Qs collected (cumulative)
-- **0x13**: Current Swirly Q ammo (max 20)
+- **0x13**: Current Swirl count (for bonus room, max 20)
 
 **Requirement**: "Complete final level with at least 48 Swirly Qs"  
 **Hint**: "No Password longer than 3" (don't skip levels, miss collectibles)
